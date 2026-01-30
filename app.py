@@ -20,7 +20,7 @@ RUN_TEMPLATES = {
     "Text+Vision+Chemistry Feedback (Claude Opus 4.5) (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*",
 }
 FEEDBACK_FILE = Path("chemist_feedback.json")
-BASE_DIR = Path(".")  # Adjust this to your actual base directory
+BASE_DIR = Path("round1")  # Adjust this to your actual base directory
 
 
 def load_feedback_data() -> dict:
