@@ -1,7 +1,6 @@
 streamlit
 pandas
 regex
-json
 datetime
 glob
 pathlib
