@@ -2,5 +2,4 @@ streamlit
 pandas
 regex
 datetime
-glob
 pathlib
