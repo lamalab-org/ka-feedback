@@ -1,17 +1,25 @@
 """
 Streamlit App for Collecting Chemist Feedback on Kinetic Fitting Results
+
+Feedback is persisted to a GitHub repository via the GitHub API,
+so it survives Streamlit Community Cloud restarts.
 """
 
 import streamlit as st
 import regex as re
 import glob
 import json
+import base64
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List
 import pandas as pd
+import requests
 
+# =============================================================================
 # Configuration
+# =============================================================================
+
 RUN_TEMPLATES = {
     "No Feedback (Claude Sonnet 4.5)": "kinetic_fitting_no_fb_claudesonnet45_*",
     "No Feedback (GPT-4o)": "kinetic_fitting_no_fb_gpt4o_feedback_*",
@@ -21,30 +29,111 @@ RUN_TEMPLATES = {
 }
 
 # Patterns that should be EXCLUDED when matching a given template.
-# This resolves the ambiguity where "kinetic_fitting_with_visionfb_claudesonnet45_*"
-# would also match "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*".
 EXCLUDE_PATTERNS = {
     "kinetic_fitting_with_visionfb_claudesonnet45_*": [
         "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*"
     ],
 }
 
-FEEDBACK_FILE = Path("chemist_feedback.json")
 BASE_DIR = Path("round1")  # Adjust this to your actual base directory
 
+# GitHub configuration — set these in Streamlit secrets.
+# In your Streamlit Cloud dashboard (or .streamlit/secrets.toml locally):
+#
+#   GITHUB_TOKEN         = "ghp_xxxxxxxxxxxxxxxxxxxx"
+#   GITHUB_REPO          = "username/repo-name"
+#   GITHUB_FEEDBACK_PATH = "feedback/chemist_feedback.json"
+#   GITHUB_BRANCH        = "main"
 
-def load_feedback_data() -> dict:
-    """Load existing feedback from JSON file."""
-    if FEEDBACK_FILE.exists():
-        with open(FEEDBACK_FILE, "r") as f:
-            return json.load(f)
-    return {"feedback_entries": []}
+GITHUB_API = "https://api.github.com"
 
 
-def save_feedback_data(data: dict):
-    """Save feedback to JSON file."""
-    with open(FEEDBACK_FILE, "w") as f:
-        json.dump(data, f, indent=2, default=str)
+# =============================================================================
+# GitHub-backed storage
+# =============================================================================
+
+
+def _github_headers() -> dict:
+    """Return authorization headers for the GitHub API."""
+    token = st.secrets.get("GITHUB_TOKEN", "")
+    if not token:
+        st.error(
+            "⚠️ `GITHUB_TOKEN` is not set in Streamlit secrets. "
+            "Feedback cannot be saved."
+        )
+        st.stop()
+    return {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+
+def _github_file_url() -> str:
+    """Build the GitHub Contents API URL for the feedback file."""
+    repo = st.secrets.get("GITHUB_REPO", "")
+    path = st.secrets.get("GITHUB_FEEDBACK_PATH", "feedback/chemist_feedback.json")
+    return f"{GITHUB_API}/repos/{repo}/contents/{path}"
+
+
+def _github_branch() -> str:
+    return st.secrets.get("GITHUB_BRANCH", "main")
+
+
+def load_feedback_data() -> Tuple[dict, Optional[str]]:
+    """
+    Load feedback JSON from GitHub.
+
+    Returns:
+        (data_dict, sha) — sha is needed to update the file later.
+        If the file does not exist yet, returns (empty structure, None).
+    """
+    url = _github_file_url()
+    params = {"ref": _github_branch()}
+    resp = requests.get(url, headers=_github_headers(), params=params)
+
+    if resp.status_code == 200:
+        payload = resp.json()
+        content = base64.b64decode(payload["content"]).decode("utf-8")
+        return json.loads(content), payload["sha"]
+    elif resp.status_code == 404:
+        # File doesn't exist yet — will be created on first save
+        return {"feedback_entries": []}, None
+    else:
+        st.error(f"GitHub API error ({resp.status_code}): {resp.text}")
+        return {"feedback_entries": []}, None
+
+
+def save_feedback_data(data: dict, sha: Optional[str] = None) -> bool:
+    """
+    Save (create or update) the feedback JSON on GitHub.
+
+    Args:
+        data: The full feedback dict to write.
+        sha:  The current file SHA (required for updates, None for creation).
+    """
+    url = _github_file_url()
+    content_bytes = json.dumps(data, indent=2, default=str).encode("utf-8")
+    encoded = base64.b64encode(content_bytes).decode("utf-8")
+
+    body = {
+        "message": f"feedback: update {datetime.now().isoformat()}",
+        "content": encoded,
+        "branch": _github_branch(),
+    }
+    if sha is not None:
+        body["sha"] = sha
+
+    resp = requests.put(url, headers=_github_headers(), json=body)
+
+    if resp.status_code not in (200, 201):
+        st.error(f"Failed to save feedback ({resp.status_code}): {resp.text}")
+        return False
+    return True
+
+
+# =============================================================================
+# Result loading helpers
+# =============================================================================
 
 
 def _find_best_phenomenological_result(
@@ -88,7 +177,6 @@ def get_available_runs(template: str) -> List[Path]:
     pattern = BASE_DIR / template
     matched_dirs = set(glob.glob(str(pattern)))
 
-    # Remove directories that match any exclude pattern for this template
     for exclude_tmpl in EXCLUDE_PATTERNS.get(template, []):
         exclude_pattern = BASE_DIR / exclude_tmpl
         exclude_dirs = set(glob.glob(str(exclude_pattern)))
@@ -131,6 +219,11 @@ def extract_run_number(name: str) -> str:
     return name
 
 
+# =============================================================================
+# Main app
+# =============================================================================
+
+
 def main():
     st.set_page_config(
         page_title="Kinetic fitting feedback", page_icon="⚗️", layout="wide"
@@ -163,7 +256,6 @@ def main():
             "Review all runs below, then submit one piece of feedback for the entire set."
         )
 
-        # List which runs are included
         st.subheader("Included Runs")
         for run_dir in available_runs:
             st.caption(f"• `{run_dir.name}`")
@@ -176,7 +268,6 @@ def main():
         "After reviewing, submit your feedback at the bottom."
     )
 
-    # Collect results for all runs
     run_results = []
     for run_dir in available_runs:
         best_file, best_data = _find_best_phenomenological_result(run_dir)
@@ -297,9 +388,9 @@ def main():
             if not whats_good and not whats_bad and not action:
                 st.error("Please provide at least one piece of feedback.")
             else:
-                feedback_data = load_feedback_data()
+                # Load current state from GitHub (gets latest SHA)
+                feedback_data, sha = load_feedback_data()
 
-                # Collect per-run scores for the snapshot
                 per_run_scores = {}
                 for result in run_results:
                     if result["best_data"] is not None:
@@ -320,7 +411,6 @@ def main():
                     "whats_good": whats_good,
                     "whats_bad": whats_bad,
                     "suggested_action": action,
-                    # Snapshot all networks for reproducibility
                     "network_snapshots": {
                         str(r["dir"]): r["best_data"].get("network", {})
                         for r in run_results
@@ -329,15 +419,15 @@ def main():
                 }
 
                 feedback_data["feedback_entries"].append(new_entry)
-                save_feedback_data(feedback_data)
 
-                st.success("✅ Feedback submitted successfully!")
-                st.balloons()
+                if save_feedback_data(feedback_data, sha):
+                    st.success("✅ Feedback submitted and saved to GitHub!")
+                    st.balloons()
 
     # Show previous feedback for this run type
     st.markdown("---")
     with st.expander("📜 Previous Feedback for This Run Type"):
-        feedback_data = load_feedback_data()
+        feedback_data, _ = load_feedback_data()
         type_feedback = [
             f
             for f in feedback_data.get("feedback_entries", [])
@@ -363,9 +453,9 @@ def main():
                 if i < len(type_feedback) - 1:
                     st.markdown("---")
 
-    # Admin section for viewing all feedback
+    # Admin section
     with st.expander("📊 All Collected Feedback (Admin View)"):
-        feedback_data = load_feedback_data()
+        feedback_data, _ = load_feedback_data()
         all_entries = feedback_data.get("feedback_entries", [])
 
         if not all_entries:
