@@ -8,7 +8,7 @@ import glob
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import pandas as pd
 
 # Configuration
@@ -19,6 +19,16 @@ RUN_TEMPLATES = {
     "Text+Vision Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_*",
     "Text+Vision+Chemistry Feedback (Claude Opus 4.5) (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*",
 }
+
+# Patterns that should be EXCLUDED when matching a given template.
+# This resolves the ambiguity where "kinetic_fitting_with_visionfb_claudesonnet45_*"
+# would also match "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*".
+EXCLUDE_PATTERNS = {
+    "kinetic_fitting_with_visionfb_claudesonnet45_*": [
+        "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*"
+    ],
+}
+
 FEEDBACK_FILE = Path("chemist_feedback.json")
 BASE_DIR = Path("round1")  # Adjust this to your actual base directory
 
@@ -73,11 +83,18 @@ def _find_best_phenomenological_result(
     return best_file, best_data
 
 
-def get_available_runs(template: str) -> list:
-    """Get available run directories matching the template."""
+def get_available_runs(template: str) -> List[Path]:
+    """Get available run directories matching the template, excluding ambiguous matches."""
     pattern = BASE_DIR / template
-    dirs = sorted(glob.glob(str(pattern)))
-    return [Path(d) for d in dirs if Path(d).is_dir()]
+    matched_dirs = set(glob.glob(str(pattern)))
+
+    # Remove directories that match any exclude pattern for this template
+    for exclude_tmpl in EXCLUDE_PATTERNS.get(template, []):
+        exclude_pattern = BASE_DIR / exclude_tmpl
+        exclude_dirs = set(glob.glob(str(exclude_pattern)))
+        matched_dirs -= exclude_dirs
+
+    return sorted(Path(d) for d in matched_dirs if Path(d).is_dir())
 
 
 def format_reaction_for_display(reaction: dict) -> dict:
@@ -106,6 +123,14 @@ def format_reaction_for_display(reaction: dict) -> dict:
     return formatted
 
 
+def extract_run_number(name: str) -> str:
+    """Extract a human-readable run number from a directory name."""
+    match = re.search(r"_(\d+)$", name)
+    if match:
+        return f"Run {match.group(1)}"
+    return name
+
+
 def main():
     st.set_page_config(
         page_title="Kinetic fitting feedback", page_icon="⚗️", layout="wide"
@@ -114,15 +139,15 @@ def main():
     st.title("⚗️ Kinetic fitting - chemistry feedback round")
     st.markdown("---")
 
-    # Sidebar for run selection
+    # Sidebar for run type selection
     with st.sidebar:
-        st.header("🔬 Run Selection")
+        st.header("🔬 Run Type Selection")
 
-        # Run type selector
         run_type = st.selectbox(
             "Select Run Type",
             options=list(RUN_TEMPLATES.keys()),
-            help="Choose the type of kinetic fitting run to review",
+            help="Choose the type of kinetic fitting run to review. "
+            "You will see ALL runs of this type and provide one overall feedback.",
         )
 
         template = RUN_TEMPLATES[run_type]
@@ -132,176 +157,201 @@ def main():
             st.warning(f"No runs found for pattern: {template}")
             st.stop()
 
-        # Run number selector (toggle-like with radio buttons)
-        st.subheader("Select Run Number")
-        run_names = [d.name for d in available_runs]
-
-        # Extract run numbers for cleaner display
-        run_options = []
-        for name in run_names:
-            match = re.search(r"_(\d+)$", name)
-            if match:
-                run_options.append(f"Run {match.group(1)}")
-            else:
-                run_options.append(name)
-
-        selected_idx = st.radio(
-            "Available Runs",
-            range(len(run_options)),
-            format_func=lambda x: run_options[x],
-            horizontal=True,
+        st.markdown("---")
+        st.info(
+            f"📁 Found **{len(available_runs)}** run(s) for this type.\n\n"
+            "Review all runs below, then submit one piece of feedback for the entire set."
         )
 
-        selected_run_dir = available_runs[selected_idx]
+        # List which runs are included
+        st.subheader("Included Runs")
+        for run_dir in available_runs:
+            st.caption(f"• `{run_dir.name}`")
 
-        st.markdown("---")
-        st.info(f"📁 Selected: `{selected_run_dir.name}`")
+    # --- Main content: display ALL runs for the selected type ---
 
-    # Load the best result for selected run
-    best_file, best_data = _find_best_phenomenological_result(selected_run_dir)
-
-    if best_data is None:
-        st.error(f"No phenomenological results found in {selected_run_dir}")
-        st.stop()
-
-    # Display overall score if available
-    overall_score = best_data.get("phenomenological_trends", {}).get(
-        "overall_score", "N/A"
+    st.header(f"📊 All Runs — {run_type}")
+    st.caption(
+        "Browse through each run's best reaction network below. "
+        "After reviewing, submit your feedback at the bottom."
     )
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.metric(
-            "Overall Fit Score",
-            f"{overall_score:.4f}"
-            if isinstance(overall_score, float)
-            else overall_score,
+    # Collect results for all runs
+    run_results = []
+    for run_dir in available_runs:
+        best_file, best_data = _find_best_phenomenological_result(run_dir)
+        run_results.append(
+            {
+                "dir": run_dir,
+                "label": extract_run_number(run_dir.name),
+                "best_file": best_file,
+                "best_data": best_data,
+            }
         )
-    with col2:
-        st.caption(f"Source: `{best_file.name}`")
+
+    # Display each run in its own tab
+    tab_labels = [r["label"] for r in run_results]
+    tabs = st.tabs(tab_labels)
+
+    for tab, result in zip(tabs, run_results):
+        with tab:
+            run_dir = result["dir"]
+            best_file = result["best_file"]
+            best_data = result["best_data"]
+
+            if best_data is None:
+                st.warning(f"No phenomenological results found in `{run_dir.name}`")
+                continue
+
+            overall_score = best_data.get("phenomenological_trends", {}).get(
+                "overall_score", "N/A"
+            )
+
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.metric(
+                    "Overall Fit Score",
+                    f"{overall_score:.4f}"
+                    if isinstance(overall_score, float)
+                    else overall_score,
+                )
+            with col2:
+                st.caption(f"Source: `{best_file.name}`")
+
+            network = best_data.get("network", {})
+            reactions = network.get("reactions", [])
+
+            if not reactions:
+                st.info("No reactions found in this result.")
+            else:
+                reaction_data = []
+                for i, rxn in enumerate(reactions):
+                    formatted = format_reaction_for_display(rxn)
+                    formatted["#"] = i + 1
+                    reaction_data.append(formatted)
+
+                df = pd.DataFrame(reaction_data)
+                df = df[
+                    [
+                        "#",
+                        "Equation",
+                        "Type",
+                        "Fitted Parameter",
+                        "Range",
+                        "Description",
+                    ]
+                ]
+
+                def highlight_type(val):
+                    if val == "light":
+                        return "background-color: #fff3cd"
+                    return ""
+
+                styled_df = df.style.map(highlight_type, subset=["Type"])
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+                metadata = network.get("metadata", {})
+                if metadata:
+                    with st.expander("📋 Network Metadata"):
+                        st.json(metadata)
+
+    # --- Single feedback form for the entire run type ---
 
     st.markdown("---")
+    st.header("💬 Your Feedback for This Run Type")
+    st.caption(
+        f"Submit **one** overall assessment across all "
+        f"**{len(available_runs)}** run(s) of *{run_type}*."
+    )
 
-    # Main content area - two columns
-    left_col, right_col = st.columns([3, 2])
+    with st.form("feedback_form"):
+        st.subheader("What's Good? ✅")
+        whats_good = st.text_area(
+            "Describe positive aspects of the reaction networks across these runs",
+            placeholder="e.g., The oxidative quenching step looks reasonable across most runs...",
+            label_visibility="collapsed",
+            height=100,
+        )
 
-    with left_col:
-        st.header("📊 Reaction Network")
+        st.subheader("What's Bad? ❌")
+        whats_bad = st.text_area(
+            "Describe issues or concerns",
+            placeholder="e.g., The rate constant for dimerization seems too low in several runs...",
+            label_visibility="collapsed",
+            height=100,
+        )
 
-        network = best_data.get("network", {})
-        reactions = network.get("reactions", [])
+        st.subheader("Suggested Action 🔧")
+        action = st.text_area(
+            "What changes would you recommend?",
+            placeholder="e.g., Add a back-reaction for the dimer dissociation...",
+            label_visibility="collapsed",
+            height=100,
+        )
 
-        if not reactions:
-            st.warning("No reactions found in this result.")
-        else:
-            # Create a DataFrame for better display
-            reaction_data = []
-            for i, rxn in enumerate(reactions):
-                formatted = format_reaction_for_display(rxn)
-                formatted["#"] = i + 1
-                reaction_data.append(formatted)
+        submitted = st.form_submit_button(
+            "📤 Submit Feedback", use_container_width=True
+        )
 
-            df = pd.DataFrame(reaction_data)
-            df = df[
-                ["#", "Equation", "Type", "Fitted Parameter", "Range", "Description"]
-            ]
+        if submitted:
+            if not whats_good and not whats_bad and not action:
+                st.error("Please provide at least one piece of feedback.")
+            else:
+                feedback_data = load_feedback_data()
 
-            # Style the dataframe
-            def highlight_type(val):
-                if val == "light":
-                    return "background-color: #fff3cd"  # Yellow for light
-                return ""
+                # Collect per-run scores for the snapshot
+                per_run_scores = {}
+                for result in run_results:
+                    if result["best_data"] is not None:
+                        score = (
+                            result["best_data"]
+                            .get("phenomenological_trends", {})
+                            .get("overall_score", "N/A")
+                        )
+                        per_run_scores[str(result["dir"])] = score
 
-            styled_df = df.style.map(highlight_type, subset=["Type"])
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+                new_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "run_type": run_type,
+                    "glob_template": template,
+                    "num_runs": len(available_runs),
+                    "run_directories": [str(r) for r in available_runs],
+                    "per_run_scores": per_run_scores,
+                    "whats_good": whats_good,
+                    "whats_bad": whats_bad,
+                    "suggested_action": action,
+                    # Snapshot all networks for reproducibility
+                    "network_snapshots": {
+                        str(r["dir"]): r["best_data"].get("network", {})
+                        for r in run_results
+                        if r["best_data"] is not None
+                    },
+                }
 
-            # Show metadata
-            metadata = network.get("metadata", {})
-            if metadata:
-                with st.expander("📋 Network Metadata"):
-                    st.json(metadata)
+                feedback_data["feedback_entries"].append(new_entry)
+                save_feedback_data(feedback_data)
 
-    with right_col:
-        st.header("💬 Your Feedback")
+                st.success("✅ Feedback submitted successfully!")
+                st.balloons()
 
-        # Feedback form
-        with st.form("feedback_form"):
-            st.subheader("What's Good? ✅")
-            whats_good = st.text_input(
-                "Describe one positive aspect of this reaction network",
-                placeholder="e.g., The oxidative quenching step looks reasonable...",
-                label_visibility="collapsed",
-            )
-
-            st.subheader("What's Bad? ❌")
-            whats_bad = st.text_input(
-                "Describe one issue or concern",
-                placeholder="e.g., The rate constant for dimerization seems too low...",
-                label_visibility="collapsed",
-            )
-
-            st.subheader("Suggested Action 🔧")
-            action = st.text_input(
-                "What one change would you recommend?",
-                placeholder="e.g., Add a back-reaction for the dimer dissociation...",
-                label_visibility="collapsed",
-            )
-
-            # Overall rating
-            # overall_rating = st.slider(
-            #     "Overall Quality Rating",
-            #     min_value=1,
-            #     max_value=5,
-            #     value=3,
-            #     help="1 = Poor, 5 = Excellent",
-            # )
-
-            submitted = st.form_submit_button(
-                "📤 Submit Feedback", use_container_width=True
-            )
-
-            if submitted:
-                if not whats_good and not whats_bad and not action:
-                    st.error("Please provide at least one piece of feedback.")
-                else:
-                    # Save feedback
-                    feedback_data = load_feedback_data()
-
-                    new_entry = {
-                        "timestamp": datetime.now().isoformat(),
-                        "run_type": run_type,
-                        "run_directory": str(selected_run_dir),
-                        "source_file": str(best_file),
-                        "overall_fit_score": overall_score,
-                        "whats_good": whats_good,
-                        "whats_bad": whats_bad,
-                        "suggested_action": action,
-                        # "overall_rating": overall_rating,
-                        "network_snapshot": network,
-                    }
-
-                    feedback_data["feedback_entries"].append(new_entry)
-                    save_feedback_data(feedback_data)
-
-                    st.success("✅ Feedback submitted successfully!")
-                    st.balloons()
-
-    # Show previous feedback for this run
+    # Show previous feedback for this run type
     st.markdown("---")
-    with st.expander("📜 Previous Feedback for This Run"):
+    with st.expander("📜 Previous Feedback for This Run Type"):
         feedback_data = load_feedback_data()
-        run_feedback = [
+        type_feedback = [
             f
             for f in feedback_data.get("feedback_entries", [])
-            if f.get("run_directory") == str(selected_run_dir)
+            if f.get("run_type") == run_type
         ]
 
-        if not run_feedback:
-            st.info("No previous feedback for this run.")
+        if not type_feedback:
+            st.info("No previous feedback for this run type.")
         else:
-            for i, entry in enumerate(reversed(run_feedback)):
-                st.markdown(f"**Feedback** - {entry.get('timestamp', 'Unknown time')}")
-                st.markdown(f"⭐ Rating: {entry.get('overall_rating', 'N/A')}/5")
+            for i, entry in enumerate(reversed(type_feedback)):
+                st.markdown(
+                    f"**Feedback** — {entry.get('timestamp', 'Unknown time')}  "
+                    f"({entry.get('num_runs', '?')} runs)"
+                )
 
                 if entry.get("whats_good"):
                     st.markdown(f"✅ **Good:** {entry['whats_good']}")
@@ -310,7 +360,7 @@ def main():
                 if entry.get("suggested_action"):
                     st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
 
-                if i < len(run_feedback) - 1:
+                if i < len(type_feedback) - 1:
                     st.markdown("---")
 
     # Admin section for viewing all feedback
@@ -321,17 +371,13 @@ def main():
         if not all_entries:
             st.info("No feedback collected yet.")
         else:
-            # Summary stats
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total Entries", len(all_entries))
             with col2:
-                avg_rating = sum(e.get("overall_rating", 0) for e in all_entries) / len(
-                    all_entries
-                )
-                st.metric("Average Rating", f"{avg_rating:.2f}/5")
+                unique_types = len(set(e.get("run_type", "") for e in all_entries))
+                st.metric("Run Types Covered", unique_types)
 
-            # Download button
             st.download_button(
                 label="📥 Download All Feedback (JSON)",
                 data=json.dumps(feedback_data, indent=2, default=str),
