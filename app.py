@@ -31,7 +31,7 @@ RUN_TEMPLATES = {
     "No Feedback (GPT-4o)": "kinetic_fitting_no_fb_gpt4o_feedback_*",
     "Text Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_fb_claudesonnet45_*",
     "Text+Vision Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_*",
-    "Text+Vision+Chemistry Feedback (Claude Opus 4.5) (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*",
+    "Text+Vision+Chemistry Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*",
     "Text+Chemistry Feedback every round (Claude Sonnet 4.5)": "kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_*",
 }
 
