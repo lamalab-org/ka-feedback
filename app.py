@@ -135,7 +135,9 @@ def _load_json_from_github(repo_path: str) -> Tuple[list, Optional[str]]:
         return [], None
 
 
-def _save_json_to_github(repo_path: str, data: list, sha: Optional[str] = None) -> bool:
+def _save_json_to_github(
+    repo_path: str, data: list, sha: Optional[str] = None
+) -> bool:
     """Save (create or update) a JSON array to a file in the repo."""
     url = _github_contents_url(repo_path)
     content_bytes = json.dumps(data, indent=2, default=str).encode("utf-8")
@@ -159,7 +161,9 @@ def _save_json_to_github(repo_path: str, data: list, sha: Optional[str] = None) 
 # --- Per-user / per-run-type convenience wrappers ---
 
 
-def load_user_run_feedback(username: str, run_type: str) -> Tuple[list, Optional[str]]:
+def load_user_run_feedback(
+    username: str, run_type: str
+) -> Tuple[list, Optional[str]]:
     """Load the feedback entries list for a specific user + run type."""
     path = _feedback_file_path(username, run_type)
     return _load_json_from_github(path)
@@ -189,7 +193,9 @@ def _list_github_dir(repo_path: str) -> List[dict]:
 def list_all_feedback_users() -> List[str]:
     """Return folder names under feedback/ — each is a slugified username."""
     items = _list_github_dir(FEEDBACK_ROOT)
-    return sorted(item["name"] for item in items if item.get("type") == "dir")
+    return sorted(
+        item["name"] for item in items if item.get("type") == "dir"
+    )
 
 
 def list_user_run_files(user_slug: str) -> List[str]:
@@ -226,23 +232,32 @@ def load_all_feedback() -> List[dict]:
 
 def _find_best_phenomenological_result(
     output_dir: Path,
-) -> Tuple[Optional[Path], Optional[dict]]:
-    """Find the phenomenological result JSON with the best overall_score."""
+) -> Tuple[Optional[Path], Optional[dict], Optional[Path]]:
+    """
+    Find the phenomenological result JSON with the best overall_score.
+
+    Returns:
+        (best_json_path, best_data, best_image_path)
+        The image is phenomenological_trends_{timestamp}.png matching the
+        timestamp in phenomenologic_result.json.{timestamp}.
+    """
     output_dir = Path(output_dir)
     pattern = f"{output_dir.as_posix()}/phenomenologic_result.json.*"
     result_files = glob.glob(pattern)
 
     if not result_files:
-        return None, None
+        return None, None, None
 
     best_score = -1.0
     best_file = None
     best_data = None
+    best_timestamp = None
 
     for filepath in result_files:
         match = re.search(r"phenomenologic_result\.json\.(\d+)$", filepath)
         if not match:
             continue
+        timestamp = match.group(1)
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -253,10 +268,18 @@ def _find_best_phenomenological_result(
                 best_score = overall_score
                 best_file = Path(filepath)
                 best_data = data
+                best_timestamp = timestamp
         except (json.JSONDecodeError, IOError):
             continue
 
-    return best_file, best_data
+    # Look up the matching image
+    best_image = None
+    if best_timestamp is not None:
+        candidate = output_dir / f"phenomenological_trends_{best_timestamp}.png"
+        if candidate.exists():
+            best_image = candidate
+
+    return best_file, best_data, best_image
 
 
 def get_available_runs(template: str) -> List[Path]:
@@ -285,14 +308,18 @@ def format_reaction_for_display(reaction: dict) -> dict:
         qy_range = reaction.get("quantum_yield", [])
         formatted["Fitted Parameter"] = f"QY = {qy:.4f}" if qy else "N/A"
         formatted["Range"] = (
-            f"[{qy_range[0]}, {qy_range[1]}]" if len(qy_range) == 2 else "N/A"
+            f"[{qy_range[0]}, {qy_range[1]}]"
+            if len(qy_range) == 2
+            else "N/A"
         )
     else:
         k = reaction.get("fitted_k")
         k_range = reaction.get("k_range", [])
         formatted["Fitted Parameter"] = f"k = {k:.4e}" if k else "N/A"
         formatted["Range"] = (
-            f"[{k_range[0]:.0e}, {k_range[1]:.0e}]" if len(k_range) == 2 else "N/A"
+            f"[{k_range[0]:.0e}, {k_range[1]:.0e}]"
+            if len(k_range) == 2
+            else "N/A"
         )
 
     return formatted
@@ -363,7 +390,7 @@ def render_user_badge(username: str):
 
 
 def render_run_results(run_results: list):
-    """Display each run's best reaction network in tabs."""
+    """Display each run's best reaction network and trend image in tabs."""
     tab_labels = [r["label"] for r in run_results]
     tabs = st.tabs(tab_labels)
 
@@ -372,9 +399,12 @@ def render_run_results(run_results: list):
             run_dir = result["dir"]
             best_file = result["best_file"]
             best_data = result["best_data"]
+            best_image = result["best_image"]
 
             if best_data is None:
-                st.warning(f"No phenomenological results found in `{run_dir.name}`")
+                st.warning(
+                    f"No phenomenological results found in `{run_dir.name}`"
+                )
                 continue
 
             overall_score = best_data.get("phenomenological_trends", {}).get(
@@ -394,37 +424,57 @@ def render_run_results(run_results: list):
             with col2:
                 st.caption(f"Source: `{best_file.name}`")
 
+            # --- Reaction table + image side by side ---
             network = best_data.get("network", {})
             reactions = network.get("reactions", [])
 
-            if not reactions:
-                st.info("No reactions found in this result.")
-            else:
-                reaction_data = []
-                for i, rxn in enumerate(reactions):
-                    formatted = format_reaction_for_display(rxn)
-                    formatted["#"] = i + 1
-                    reaction_data.append(formatted)
+            col_table, col_img = st.columns([3, 1])
 
-                df = pd.DataFrame(reaction_data)
-                df = df[
-                    [
-                        "#",
-                        "Equation",
-                        "Type",
-                        "Fitted Parameter",
-                        "Range",
-                        "Description",
+            with col_table:
+                if not reactions:
+                    st.info("No reactions found in this result.")
+                else:
+                    reaction_data = []
+                    for i, rxn in enumerate(reactions):
+                        formatted = format_reaction_for_display(rxn)
+                        formatted["#"] = i + 1
+                        reaction_data.append(formatted)
+
+                    df = pd.DataFrame(reaction_data)
+                    df = df[
+                        [
+                            "#",
+                            "Equation",
+                            "Type",
+                            "Fitted Parameter",
+                            "Range",
+                            "Description",
+                        ]
                     ]
-                ]
 
-                def highlight_type(val):
-                    if val == "light":
-                        return "background-color: #fff3cd"
-                    return ""
+                    def highlight_type(val):
+                        if val == "light":
+                            return "background-color: #fff3cd"
+                        return ""
 
-                styled_df = df.style.map(highlight_type, subset=["Type"])
-                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+                    styled_df = df.style.map(
+                        highlight_type, subset=["Type"]
+                    )
+                    st.dataframe(
+                        styled_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            with col_img:
+                if best_image is not None:
+                    st.image(
+                        str(best_image),
+                        caption=best_image.name,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No trends image found.")
 
             metadata = network.get("metadata", {})
             if metadata:
@@ -473,7 +523,9 @@ def render_feedback_form(
         st.subheader("Suggested Action 🔧")
         action = st.text_area(
             "What changes would you recommend?",
-            placeholder=("e.g., Add a back-reaction for the dimer dissociation..."),
+            placeholder=(
+                "e.g., Add a back-reaction for the dimer dissociation..."
+            ),
             label_visibility="collapsed",
             height=100,
         )
@@ -528,7 +580,9 @@ def render_previous_feedback(username: str, run_type: str):
     """Show the current user's previous feedback for this run type."""
     st.markdown("---")
 
-    with st.expander(f"📜 Your Previous Feedback for *{run_type}*", expanded=False):
+    with st.expander(
+        f"📜 Your Previous Feedback for *{run_type}*", expanded=False
+    ):
         my_feedback, _ = load_user_run_feedback(username, run_type)
 
         if not my_feedback:
@@ -544,7 +598,9 @@ def render_previous_feedback(username: str, run_type: str):
                 if entry.get("whats_bad"):
                     st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
                 if entry.get("suggested_action"):
-                    st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
+                    st.markdown(
+                        f"🔧 **Action:** {entry['suggested_action']}"
+                    )
                 if i < len(my_feedback) - 1:
                     st.markdown("---")
 
@@ -563,7 +619,9 @@ def render_admin_section(username: str):
             with col1:
                 st.metric("Total Entries", len(all_entries))
             with col2:
-                unique_types = len(set(e.get("run_type", "") for e in all_entries))
+                unique_types = len(
+                    set(e.get("run_type", "") for e in all_entries)
+                )
                 st.metric("Run Types Covered", unique_types)
             with col3:
                 unique_users = len(
@@ -581,7 +639,9 @@ def render_admin_section(username: str):
             user_df = pd.DataFrame(
                 [
                     {"User": u, "Submissions": c}
-                    for u, c in sorted(user_counts.items(), key=lambda x: -x[1])
+                    for u, c in sorted(
+                        user_counts.items(), key=lambda x: -x[1]
+                    )
                 ]
             )
             st.dataframe(user_df, use_container_width=True, hide_index=True)
@@ -597,7 +657,10 @@ def render_admin_section(username: str):
                 matrix_data[rt][u] = matrix_data[rt].get(u, 0) + 1
 
             all_users_in_data = sorted(
-                {e.get("user", e.get("_user_slug", "Unknown")) for e in all_entries}
+                {
+                    e.get("user", e.get("_user_slug", "Unknown"))
+                    for e in all_entries
+                }
             )
             matrix_rows = []
             for rt in sorted(matrix_data.keys()):
@@ -608,12 +671,17 @@ def render_admin_section(username: str):
 
             if matrix_rows:
                 matrix_df = pd.DataFrame(matrix_rows)
-                st.dataframe(matrix_df, use_container_width=True, hide_index=True)
+                st.dataframe(
+                    matrix_df, use_container_width=True, hide_index=True
+                )
 
             # --- Filter by user ---
             st.subheader("Filter by User")
             all_user_names = sorted(
-                {e.get("user", e.get("_user_slug", "Unknown")) for e in all_entries}
+                {
+                    e.get("user", e.get("_user_slug", "Unknown"))
+                    for e in all_entries
+                }
             )
             filter_user = st.selectbox(
                 "Select a user to view their feedback",
@@ -633,7 +701,9 @@ def render_admin_section(username: str):
 
             if filtered:
                 for i, entry in enumerate(reversed(filtered)):
-                    entry_user = entry.get("user", entry.get("_user_slug", "Unknown"))
+                    entry_user = entry.get(
+                        "user", entry.get("_user_slug", "Unknown")
+                    )
                     st.markdown(
                         f"**{entry_user}** → *{entry.get('run_type', '?')}* — "
                         f"{entry.get('timestamp', 'Unknown time')} "
@@ -644,7 +714,9 @@ def render_admin_section(username: str):
                     if entry.get("whats_bad"):
                         st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
                     if entry.get("suggested_action"):
-                        st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
+                        st.markdown(
+                            f"🔧 **Action:** {entry['suggested_action']}"
+                        )
                     if i < len(filtered) - 1:
                         st.markdown("---")
             else:
@@ -662,7 +734,9 @@ def render_admin_section(username: str):
                     mime="application/json",
                 )
             with col_dl2:
-                my_entries = [e for e in all_entries if e.get("user") == username]
+                my_entries = [
+                    e for e in all_entries if e.get("user") == username
+                ]
                 export_mine = {"feedback_entries": my_entries}
                 st.download_button(
                     label=f"📥 Download My Feedback ({username})",
@@ -738,20 +812,25 @@ def main():
 
     run_results = []
     for run_dir in available_runs:
-        best_file, best_data = _find_best_phenomenological_result(run_dir)
+        best_file, best_data, best_image = _find_best_phenomenological_result(
+            run_dir
+        )
         run_results.append(
             {
                 "dir": run_dir,
                 "label": extract_run_number(run_dir.name),
                 "best_file": best_file,
                 "best_data": best_data,
+                "best_image": best_image,
             }
         )
 
     render_run_results(run_results)
 
     # ----- Feedback form -----
-    render_feedback_form(username, run_type, template, available_runs, run_results)
+    render_feedback_form(
+        username, run_type, template, available_runs, run_results
+    )
 
     # ----- Previous feedback (current user only) -----
     render_previous_feedback(username, run_type)
