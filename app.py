@@ -4,8 +4,10 @@ Streamlit App for Collecting Chemist Feedback on Kinetic Fitting Results
 Feedback is persisted to a GitHub repository via the GitHub API,
 so it survives Streamlit Community Cloud restarts.
 
-Each user logs in with a simple name-based identity. Feedback is
-tagged per-user and can be viewed / exported per-user or globally.
+Storage layout on GitHub:
+    feedback/{username_slug}/{run_type_slug}.json
+
+Each file holds a JSON array of that user's feedback entries for one run type.
 """
 
 import streamlit as st
@@ -46,9 +48,25 @@ BASE_DIR = Path("round1")  # Adjust this to your actual base directory
 #
 #   GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
 #   GITHUB_REPO  = "username/repo-name"
-#   GITHUB_FEEDBACK_PATH = "feedback/chemist_feedback.json"
 #   GITHUB_BRANCH = "main"
 GITHUB_API = "https://api.github.com"
+FEEDBACK_ROOT = "feedback"  # top-level folder in the repo
+
+
+# =============================================================================
+# Slug helper
+# =============================================================================
+
+
+def _slugify(text: str) -> str:
+    """
+    Turn a human-readable string into a safe filesystem / path component.
+    e.g. "No Feedback (GPT-4o)" -> "no_feedback_gpt_4o"
+    """
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    text = text.strip("_")
+    return text
 
 
 # =============================================================================
@@ -71,26 +89,37 @@ def _github_headers() -> dict:
     }
 
 
-def _github_file_url() -> str:
-    """Build the GitHub Contents API URL for the feedback file."""
-    repo = st.secrets.get("GITHUB_REPO", "")
-    path = st.secrets.get("GITHUB_FEEDBACK_PATH", "feedback/chemist_feedback.json")
-    return f"{GITHUB_API}/repos/{repo}/contents/{path}"
-
-
 def _github_branch() -> str:
     return st.secrets.get("GITHUB_BRANCH", "main")
 
 
-def load_feedback_data() -> Tuple[dict, Optional[str]]:
+def _github_repo() -> str:
+    return st.secrets.get("GITHUB_REPO", "")
+
+
+def _feedback_file_path(username: str, run_type: str) -> str:
+    """Build the in-repo path: feedback/{username_slug}/{run_type_slug}.json"""
+    return f"{FEEDBACK_ROOT}/{_slugify(username)}/{_slugify(run_type)}.json"
+
+
+def _github_contents_url(repo_path: str) -> str:
+    """Build the GitHub Contents API URL for a given in-repo path."""
+    repo = _github_repo()
+    return f"{GITHUB_API}/repos/{repo}/contents/{repo_path}"
+
+
+# --- Generic read / write for any JSON file in the repo ---
+
+
+def _load_json_from_github(repo_path: str) -> Tuple[list, Optional[str]]:
     """
-    Load feedback JSON from GitHub.
+    Load a JSON array from a file in the repo.
 
     Returns:
-        (data_dict, sha) — sha is needed to update the file later.
-        If the file does not exist yet, returns (empty structure, None).
+        (entries_list, sha) — sha is needed to update the file later.
+        If the file does not exist yet, returns ([], None).
     """
-    url = _github_file_url()
+    url = _github_contents_url(repo_path)
     params = {"ref": _github_branch()}
     resp = requests.get(url, headers=_github_headers(), params=params)
 
@@ -99,27 +128,20 @@ def load_feedback_data() -> Tuple[dict, Optional[str]]:
         content = base64.b64decode(payload["content"]).decode("utf-8")
         return json.loads(content), payload["sha"]
     elif resp.status_code == 404:
-        # File doesn't exist yet — will be created on first save
-        return {"feedback_entries": []}, None
+        return [], None
     else:
         st.error(f"GitHub API error ({resp.status_code}): {resp.text}")
-        return {"feedback_entries": []}, None
+        return [], None
 
 
-def save_feedback_data(data: dict, sha: Optional[str] = None) -> bool:
-    """
-    Save (create or update) the feedback JSON on GitHub.
-
-    Args:
-        data: The full feedback dict to write.
-        sha:  The current file SHA (required for updates, None for creation).
-    """
-    url = _github_file_url()
+def _save_json_to_github(repo_path: str, data: list, sha: Optional[str] = None) -> bool:
+    """Save (create or update) a JSON array to a file in the repo."""
+    url = _github_contents_url(repo_path)
     content_bytes = json.dumps(data, indent=2, default=str).encode("utf-8")
     encoded = base64.b64encode(content_bytes).decode("utf-8")
 
     body = {
-        "message": f"feedback: update {datetime.now().isoformat()}",
+        "message": f"feedback: {repo_path} @ {datetime.now().isoformat()}",
         "content": encoded,
         "branch": _github_branch(),
     }
@@ -131,6 +153,69 @@ def save_feedback_data(data: dict, sha: Optional[str] = None) -> bool:
         st.error(f"Failed to save feedback ({resp.status_code}): {resp.text}")
         return False
     return True
+
+
+# --- Per-user / per-run-type convenience wrappers ---
+
+
+def load_user_run_feedback(username: str, run_type: str) -> Tuple[list, Optional[str]]:
+    """Load the feedback entries list for a specific user + run type."""
+    path = _feedback_file_path(username, run_type)
+    return _load_json_from_github(path)
+
+
+def save_user_run_feedback(
+    username: str, run_type: str, entries: list, sha: Optional[str] = None
+) -> bool:
+    """Save the feedback entries list for a specific user + run type."""
+    path = _feedback_file_path(username, run_type)
+    return _save_json_to_github(path, entries, sha)
+
+
+# --- Directory listing helpers for admin view ---
+
+
+def _list_github_dir(repo_path: str) -> List[dict]:
+    """List contents of a directory in the repo via the GitHub API."""
+    url = _github_contents_url(repo_path)
+    params = {"ref": _github_branch()}
+    resp = requests.get(url, headers=_github_headers(), params=params)
+    if resp.status_code == 200:
+        return resp.json()
+    return []
+
+
+def list_all_feedback_users() -> List[str]:
+    """Return folder names under feedback/ — each is a slugified username."""
+    items = _list_github_dir(FEEDBACK_ROOT)
+    return sorted(item["name"] for item in items if item.get("type") == "dir")
+
+
+def list_user_run_files(user_slug: str) -> List[str]:
+    """Return JSON filenames under feedback/{user_slug}/."""
+    items = _list_github_dir(f"{FEEDBACK_ROOT}/{user_slug}")
+    return sorted(
+        item["name"]
+        for item in items
+        if item.get("type") == "file" and item["name"].endswith(".json")
+    )
+
+
+def load_all_feedback() -> List[dict]:
+    """
+    Walk the entire feedback/ tree and return every entry annotated
+    with '_user_slug' and '_file'.  Used by the admin panel.
+    """
+    all_entries = []
+    for user_slug in list_all_feedback_users():
+        for filename in list_user_run_files(user_slug):
+            repo_path = f"{FEEDBACK_ROOT}/{user_slug}/{filename}"
+            entries, _ = _load_json_from_github(repo_path)
+            for entry in entries:
+                entry.setdefault("_user_slug", user_slug)
+                entry.setdefault("_file", filename)
+            all_entries.extend(entries)
+    return all_entries
 
 
 # =============================================================================
@@ -218,28 +303,6 @@ def extract_run_number(name: str) -> str:
     if match:
         return f"Run {match.group(1)}"
     return name
-
-
-# =============================================================================
-# User helpers
-# =============================================================================
-
-
-def get_user_feedback_entries(
-    feedback_data: dict, username: str, run_type: Optional[str] = None
-) -> List[dict]:
-    """Return feedback entries for a specific user, optionally filtered by run type."""
-    entries = feedback_data.get("feedback_entries", [])
-    filtered = [e for e in entries if e.get("user") == username]
-    if run_type is not None:
-        filtered = [e for e in filtered if e.get("run_type") == run_type]
-    return filtered
-
-
-def get_all_users_who_submitted(feedback_data: dict) -> List[str]:
-    """Return a sorted list of all unique usernames that have submitted feedback."""
-    entries = feedback_data.get("feedback_entries", [])
-    return sorted({e.get("user", "Unknown") for e in entries if e.get("user")})
 
 
 # =============================================================================
@@ -422,8 +485,8 @@ def render_feedback_form(
         if not whats_good and not whats_bad and not action:
             st.error("Please provide at least one piece of feedback.")
         else:
-            # Load current state from GitHub (gets latest SHA)
-            feedback_data, sha = load_feedback_data()
+            # Load current file for this user + run type
+            entries, sha = load_user_run_feedback(username, run_type)
 
             per_run_scores = {}
             for result in run_results:
@@ -453,21 +516,19 @@ def render_feedback_form(
                 },
             }
 
-            feedback_data["feedback_entries"].append(new_entry)
+            entries.append(new_entry)
 
-            if save_feedback_data(feedback_data, sha):
+            if save_user_run_feedback(username, run_type, entries, sha):
                 st.success("✅ Feedback submitted and saved to GitHub!")
                 st.balloons()
 
 
 def render_previous_feedback(username: str, run_type: str):
-    """Show previous feedback for this run type, split by current user vs. others."""
+    """Show the current user's previous feedback for this run type."""
     st.markdown("---")
 
-    # --- Current user's feedback for this run type ---
     with st.expander(f"📜 Your Previous Feedback for *{run_type}*", expanded=False):
-        feedback_data, _ = load_feedback_data()
-        my_feedback = get_user_feedback_entries(feedback_data, username, run_type)
+        my_feedback, _ = load_user_run_feedback(username, run_type)
 
         if not my_feedback:
             st.info("You haven't submitted feedback for this run type yet.")
@@ -486,39 +547,11 @@ def render_previous_feedback(username: str, run_type: str):
                 if i < len(my_feedback) - 1:
                     st.markdown("---")
 
-    # --- Other users' feedback for this run type ---
-    with st.expander(f"👥 Other Users' Feedback for *{run_type}*", expanded=False):
-        feedback_data, _ = load_feedback_data()
-        all_type_feedback = [
-            f
-            for f in feedback_data.get("feedback_entries", [])
-            if f.get("run_type") == run_type and f.get("user") != username
-        ]
-
-        if not all_type_feedback:
-            st.info("No feedback from other users for this run type yet.")
-        else:
-            for i, entry in enumerate(reversed(all_type_feedback)):
-                st.markdown(
-                    f"**{entry.get('user', 'Unknown')}** — "
-                    f"{entry.get('timestamp', 'Unknown time')} "
-                    f"({entry.get('num_runs', '?')} runs)"
-                )
-                if entry.get("whats_good"):
-                    st.markdown(f"✅ **Good:** {entry['whats_good']}")
-                if entry.get("whats_bad"):
-                    st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
-                if entry.get("suggested_action"):
-                    st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
-                if i < len(all_type_feedback) - 1:
-                    st.markdown("---")
-
 
 def render_admin_section(username: str):
     """Render the admin panel with per-user and global statistics."""
     with st.expander("📊 All Collected Feedback (Admin View)"):
-        feedback_data, _ = load_feedback_data()
-        all_entries = feedback_data.get("feedback_entries", [])
+        all_entries = load_all_feedback()
 
         if not all_entries:
             st.info("No feedback collected yet.")
@@ -532,14 +565,16 @@ def render_admin_section(username: str):
                 unique_types = len(set(e.get("run_type", "") for e in all_entries))
                 st.metric("Run Types Covered", unique_types)
             with col3:
-                unique_users = len(set(e.get("user", "Unknown") for e in all_entries))
+                unique_users = len(
+                    set(e.get("_user_slug", "unknown") for e in all_entries)
+                )
                 st.metric("Unique Users", unique_users)
 
             # --- Per-user breakdown ---
             st.subheader("Per-User Breakdown")
             user_counts = {}
             for entry in all_entries:
-                u = entry.get("user", "Unknown")
+                u = entry.get("user", entry.get("_user_slug", "Unknown"))
                 user_counts[u] = user_counts.get(u, 0) + 1
 
             user_df = pd.DataFrame(
@@ -550,17 +585,19 @@ def render_admin_section(username: str):
             )
             st.dataframe(user_df, use_container_width=True, hide_index=True)
 
-            # --- Per run-type × user matrix ---
+            # --- Coverage matrix: run type × user ---
             st.subheader("Coverage Matrix (Run Type × User)")
             matrix_data = {}
             for entry in all_entries:
                 rt = entry.get("run_type", "Unknown")
-                u = entry.get("user", "Unknown")
+                u = entry.get("user", entry.get("_user_slug", "Unknown"))
                 if rt not in matrix_data:
                     matrix_data[rt] = {}
                 matrix_data[rt][u] = matrix_data[rt].get(u, 0) + 1
 
-            all_users_in_data = sorted({e.get("user", "Unknown") for e in all_entries})
+            all_users_in_data = sorted(
+                {e.get("user", e.get("_user_slug", "Unknown")) for e in all_entries}
+            )
             matrix_rows = []
             for rt in sorted(matrix_data.keys()):
                 row = {"Run Type": rt}
@@ -574,21 +611,28 @@ def render_admin_section(username: str):
 
             # --- Filter by user ---
             st.subheader("Filter by User")
-            all_submitters = get_all_users_who_submitted(feedback_data)
+            all_user_names = sorted(
+                {e.get("user", e.get("_user_slug", "Unknown")) for e in all_entries}
+            )
             filter_user = st.selectbox(
                 "Select a user to view their feedback",
-                options=["All Users"] + all_submitters,
+                options=["All Users"] + all_user_names,
                 key="admin_user_filter",
             )
 
             if filter_user == "All Users":
                 filtered = all_entries
             else:
-                filtered = get_user_feedback_entries(feedback_data, filter_user)
+                filtered = [
+                    e
+                    for e in all_entries
+                    if e.get("user") == filter_user
+                    or e.get("_user_slug") == _slugify(filter_user)
+                ]
 
             if filtered:
                 for i, entry in enumerate(reversed(filtered)):
-                    entry_user = entry.get("user", "Unknown")
+                    entry_user = entry.get("user", entry.get("_user_slug", "Unknown"))
                     st.markdown(
                         f"**{entry_user}** → *{entry.get('run_type', '?')}* — "
                         f"{entry.get('timestamp', 'Unknown time')} "
@@ -609,22 +653,20 @@ def render_admin_section(username: str):
             st.subheader("Export")
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
+                export_all = {"feedback_entries": all_entries}
                 st.download_button(
                     label="📥 Download All Feedback (JSON)",
-                    data=json.dumps(feedback_data, indent=2, default=str),
+                    data=json.dumps(export_all, indent=2, default=str),
                     file_name="chemist_feedback_all.json",
                     mime="application/json",
                 )
             with col_dl2:
-                my_data = {
-                    "feedback_entries": get_user_feedback_entries(
-                        feedback_data, username
-                    )
-                }
+                my_entries = [e for e in all_entries if e.get("user") == username]
+                export_mine = {"feedback_entries": my_entries}
                 st.download_button(
                     label=f"📥 Download My Feedback ({username})",
-                    data=json.dumps(my_data, indent=2, default=str),
-                    file_name=f"chemist_feedback_{username}.json",
+                    data=json.dumps(export_mine, indent=2, default=str),
+                    file_name=f"chemist_feedback_{_slugify(username)}.json",
                     mime="application/json",
                 )
 
@@ -710,7 +752,7 @@ def main():
     # ----- Feedback form -----
     render_feedback_form(username, run_type, template, available_runs, run_results)
 
-    # ----- Previous feedback (mine + others) -----
+    # ----- Previous feedback (current user only) -----
     render_previous_feedback(username, run_type)
 
     # ----- Admin section -----
