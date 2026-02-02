@@ -32,6 +32,7 @@ RUN_TEMPLATES = {
     "Text Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_fb_claudesonnet45_*",
     "Text+Vision Feedback (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_*",
     "Text+Vision+Chemistry Feedback (Claude Opus 4.5) (Claude Sonnet 4.5)": "kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_*",
+    "Text+Chemistry Feedback every round (Claude Sonnet 4.5)": "kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_*",
 }
 
 # Patterns that should be EXCLUDED when matching a given template.
