@@ -3,6 +3,9 @@ Streamlit App for Collecting Chemist Feedback on Kinetic Fitting Results
 
 Feedback is persisted to a GitHub repository via the GitHub API,
 so it survives Streamlit Community Cloud restarts.
+
+Each user logs in with a simple name-based identity. Feedback is
+tagged per-user and can be viewed / exported per-user or globally.
 """
 
 import streamlit as st
@@ -13,6 +16,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List
+
 import pandas as pd
 import requests
 
@@ -40,11 +44,10 @@ BASE_DIR = Path("round1")  # Adjust this to your actual base directory
 # GitHub configuration — set these in Streamlit secrets.
 # In your Streamlit Cloud dashboard (or .streamlit/secrets.toml locally):
 #
-#   GITHUB_TOKEN         = "ghp_xxxxxxxxxxxxxxxxxxxx"
-#   GITHUB_REPO          = "username/repo-name"
+#   GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
+#   GITHUB_REPO  = "username/repo-name"
 #   GITHUB_FEEDBACK_PATH = "feedback/chemist_feedback.json"
-#   GITHUB_BRANCH        = "main"
-
+#   GITHUB_BRANCH = "main"
 GITHUB_API = "https://api.github.com"
 
 
@@ -124,7 +127,6 @@ def save_feedback_data(data: dict, sha: Optional[str] = None) -> bool:
         body["sha"] = sha
 
     resp = requests.put(url, headers=_github_headers(), json=body)
-
     if resp.status_code not in (200, 201):
         st.error(f"Failed to save feedback ({resp.status_code}): {resp.text}")
         return False
@@ -155,7 +157,6 @@ def _find_best_phenomenological_result(
         match = re.search(r"phenomenologic_result\.json\.(\d+)$", filepath)
         if not match:
             continue
-
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -220,67 +221,85 @@ def extract_run_number(name: str) -> str:
 
 
 # =============================================================================
-# Main app
+# User helpers
 # =============================================================================
 
 
-def main():
-    st.set_page_config(
-        page_title="Kinetic fitting feedback", page_icon="⚗️", layout="wide"
+def get_user_feedback_entries(
+    feedback_data: dict, username: str, run_type: Optional[str] = None
+) -> List[dict]:
+    """Return feedback entries for a specific user, optionally filtered by run type."""
+    entries = feedback_data.get("feedback_entries", [])
+    filtered = [e for e in entries if e.get("user") == username]
+    if run_type is not None:
+        filtered = [e for e in filtered if e.get("run_type") == run_type]
+    return filtered
+
+
+def get_all_users_who_submitted(feedback_data: dict) -> List[str]:
+    """Return a sorted list of all unique usernames that have submitted feedback."""
+    entries = feedback_data.get("feedback_entries", [])
+    return sorted({e.get("user", "Unknown") for e in entries if e.get("user")})
+
+
+# =============================================================================
+# UI Components
+# =============================================================================
+
+
+def render_login_screen():
+    """Render a login screen where the user types their name."""
+    st.markdown(
+        "<div style='text-align:center; padding: 2rem 0 1rem 0;'>"
+        "<h2>👤 Who are you?</h2>"
+        "<p style='color:#888;'>Enter your name so feedback is saved under your identity.</p>"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    st.title("⚗️ Kinetic fitting - chemistry feedback round")
-    st.markdown("---")
+    col_left, col_mid, col_right = st.columns([1, 2, 1])
+    with col_mid:
+        name = st.text_input(
+            "Your name",
+            max_chars=60,
+            placeholder="e.g., Kevin, Dr. Smith, Jane D.",
+            label_visibility="collapsed",
+        ).strip()
 
-    # Sidebar for run type selection
-    with st.sidebar:
-        st.header("🔬 Run Type Selection")
-
-        run_type = st.selectbox(
-            "Select Run Type",
-            options=list(RUN_TEMPLATES.keys()),
-            help="Choose the type of kinetic fitting run to review. "
-            "You will see ALL runs of this type and provide one overall feedback.",
+        st.markdown("")  # spacer
+        login_clicked = st.button(
+            "🔓 Continue", use_container_width=True, type="primary"
         )
 
-        template = RUN_TEMPLATES[run_type]
-        available_runs = get_available_runs(template)
+    if login_clicked:
+        if name:
+            return name
+        else:
+            st.error("Please enter your name to continue.")
+            return None
+    return None
 
-        if not available_runs:
-            st.warning(f"No runs found for pattern: {template}")
-            st.stop()
 
-        st.markdown("---")
-        st.info(
-            f"📁 Found **{len(available_runs)}** run(s) for this type.\n\n"
-            "Review all runs below, then submit one piece of feedback for the entire set."
-        )
-
-        st.subheader("Included Runs")
-        for run_dir in available_runs:
-            st.caption(f"• `{run_dir.name}`")
-
-    # --- Main content: display ALL runs for the selected type ---
-
-    st.header(f"📊 All Runs — {run_type}")
-    st.caption(
-        "Browse through each run's best reaction network below. "
-        "After reviewing, submit your feedback at the bottom."
+def render_user_badge(username: str):
+    """Show a small badge in the sidebar indicating the logged-in user."""
+    st.sidebar.markdown(
+        f"<div style='"
+        f"background: linear-gradient(135deg, #1e3a5f, #2d5f8a);"
+        f"color: white; padding: 0.6rem 1rem; border-radius: 8px;"
+        f"margin-bottom: 1rem; text-align: center;"
+        f"font-weight: 600; font-size: 0.95rem;"
+        f"'>"
+        f"👤 {username}"
+        f"</div>",
+        unsafe_allow_html=True,
     )
+    if st.sidebar.button("🔄 Switch User", use_container_width=True):
+        del st.session_state["current_user"]
+        st.rerun()
 
-    run_results = []
-    for run_dir in available_runs:
-        best_file, best_data = _find_best_phenomenological_result(run_dir)
-        run_results.append(
-            {
-                "dir": run_dir,
-                "label": extract_run_number(run_dir.name),
-                "best_file": best_file,
-                "best_data": best_data,
-            }
-        )
 
-    # Display each run in its own tab
+def render_run_results(run_results: list):
+    """Display each run's best reaction network in tabs."""
     tab_labels = [r["label"] for r in run_results]
     tabs = st.tabs(tab_labels)
 
@@ -302,9 +321,11 @@ def main():
             with col1:
                 st.metric(
                     "Overall Fit Score",
-                    f"{overall_score:.4f}"
-                    if isinstance(overall_score, float)
-                    else overall_score,
+                    (
+                        f"{overall_score:.4f}"
+                        if isinstance(overall_score, float)
+                        else overall_score
+                    ),
                 )
             with col2:
                 st.caption(f"Source: `{best_file.name}`")
@@ -341,17 +362,24 @@ def main():
                 styled_df = df.style.map(highlight_type, subset=["Type"])
                 st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-                metadata = network.get("metadata", {})
-                if metadata:
-                    with st.expander("📋 Network Metadata"):
-                        st.json(metadata)
+            metadata = network.get("metadata", {})
+            if metadata:
+                with st.expander("📋 Network Metadata"):
+                    st.json(metadata)
 
-    # --- Single feedback form for the entire run type ---
 
+def render_feedback_form(
+    username: str,
+    run_type: str,
+    template: str,
+    available_runs: List[Path],
+    run_results: list,
+):
+    """Render the feedback form and handle submission."""
     st.markdown("---")
     st.header("💬 Your Feedback for This Run Type")
     st.caption(
-        f"Submit **one** overall assessment across all "
+        f"Submitting as **{username}** — one overall assessment across all "
         f"**{len(available_runs)}** run(s) of *{run_type}*."
     )
 
@@ -359,7 +387,10 @@ def main():
         st.subheader("What's Good? ✅")
         whats_good = st.text_area(
             "Describe positive aspects of the reaction networks across these runs",
-            placeholder="e.g., The oxidative quenching step looks reasonable across most runs...",
+            placeholder=(
+                "e.g., The oxidative quenching step looks reasonable "
+                "across most runs..."
+            ),
             label_visibility="collapsed",
             height=100,
         )
@@ -367,7 +398,10 @@ def main():
         st.subheader("What's Bad? ❌")
         whats_bad = st.text_area(
             "Describe issues or concerns",
-            placeholder="e.g., The rate constant for dimerization seems too low in several runs...",
+            placeholder=(
+                "e.g., The rate constant for dimerization seems too low "
+                "in several runs..."
+            ),
             label_visibility="collapsed",
             height=100,
         )
@@ -375,7 +409,7 @@ def main():
         st.subheader("Suggested Action 🔧")
         action = st.text_area(
             "What changes would you recommend?",
-            placeholder="e.g., Add a back-reaction for the dimer dissociation...",
+            placeholder=("e.g., Add a back-reaction for the dimer dissociation..."),
             label_visibility="collapsed",
             height=100,
         )
@@ -384,76 +418,104 @@ def main():
             "📤 Submit Feedback", use_container_width=True
         )
 
-        if submitted:
-            if not whats_good and not whats_bad and not action:
-                st.error("Please provide at least one piece of feedback.")
-            else:
-                # Load current state from GitHub (gets latest SHA)
-                feedback_data, sha = load_feedback_data()
-
-                per_run_scores = {}
-                for result in run_results:
-                    if result["best_data"] is not None:
-                        score = (
-                            result["best_data"]
-                            .get("phenomenological_trends", {})
-                            .get("overall_score", "N/A")
-                        )
-                        per_run_scores[str(result["dir"])] = score
-
-                new_entry = {
-                    "timestamp": datetime.now().isoformat(),
-                    "run_type": run_type,
-                    "glob_template": template,
-                    "num_runs": len(available_runs),
-                    "run_directories": [str(r) for r in available_runs],
-                    "per_run_scores": per_run_scores,
-                    "whats_good": whats_good,
-                    "whats_bad": whats_bad,
-                    "suggested_action": action,
-                    "network_snapshots": {
-                        str(r["dir"]): r["best_data"].get("network", {})
-                        for r in run_results
-                        if r["best_data"] is not None
-                    },
-                }
-
-                feedback_data["feedback_entries"].append(new_entry)
-
-                if save_feedback_data(feedback_data, sha):
-                    st.success("✅ Feedback submitted and saved to GitHub!")
-                    st.balloons()
-
-    # Show previous feedback for this run type
-    st.markdown("---")
-    with st.expander("📜 Previous Feedback for This Run Type"):
-        feedback_data, _ = load_feedback_data()
-        type_feedback = [
-            f
-            for f in feedback_data.get("feedback_entries", [])
-            if f.get("run_type") == run_type
-        ]
-
-        if not type_feedback:
-            st.info("No previous feedback for this run type.")
+    if submitted:
+        if not whats_good and not whats_bad and not action:
+            st.error("Please provide at least one piece of feedback.")
         else:
-            for i, entry in enumerate(reversed(type_feedback)):
+            # Load current state from GitHub (gets latest SHA)
+            feedback_data, sha = load_feedback_data()
+
+            per_run_scores = {}
+            for result in run_results:
+                if result["best_data"] is not None:
+                    score = (
+                        result["best_data"]
+                        .get("phenomenological_trends", {})
+                        .get("overall_score", "N/A")
+                    )
+                    per_run_scores[str(result["dir"])] = score
+
+            new_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "user": username,
+                "run_type": run_type,
+                "glob_template": template,
+                "num_runs": len(available_runs),
+                "run_directories": [str(r) for r in available_runs],
+                "per_run_scores": per_run_scores,
+                "whats_good": whats_good,
+                "whats_bad": whats_bad,
+                "suggested_action": action,
+                "network_snapshots": {
+                    str(r["dir"]): r["best_data"].get("network", {})
+                    for r in run_results
+                    if r["best_data"] is not None
+                },
+            }
+
+            feedback_data["feedback_entries"].append(new_entry)
+
+            if save_feedback_data(feedback_data, sha):
+                st.success("✅ Feedback submitted and saved to GitHub!")
+                st.balloons()
+
+
+def render_previous_feedback(username: str, run_type: str):
+    """Show previous feedback for this run type, split by current user vs. others."""
+    st.markdown("---")
+
+    # --- Current user's feedback for this run type ---
+    with st.expander(f"📜 Your Previous Feedback for *{run_type}*", expanded=False):
+        feedback_data, _ = load_feedback_data()
+        my_feedback = get_user_feedback_entries(feedback_data, username, run_type)
+
+        if not my_feedback:
+            st.info("You haven't submitted feedback for this run type yet.")
+        else:
+            for i, entry in enumerate(reversed(my_feedback)):
                 st.markdown(
-                    f"**Feedback** — {entry.get('timestamp', 'Unknown time')}  "
+                    f"**Feedback** — {entry.get('timestamp', 'Unknown time')} "
                     f"({entry.get('num_runs', '?')} runs)"
                 )
-
                 if entry.get("whats_good"):
                     st.markdown(f"✅ **Good:** {entry['whats_good']}")
                 if entry.get("whats_bad"):
                     st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
                 if entry.get("suggested_action"):
                     st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
-
-                if i < len(type_feedback) - 1:
+                if i < len(my_feedback) - 1:
                     st.markdown("---")
 
-    # Admin section
+    # --- Other users' feedback for this run type ---
+    with st.expander(f"👥 Other Users' Feedback for *{run_type}*", expanded=False):
+        feedback_data, _ = load_feedback_data()
+        all_type_feedback = [
+            f
+            for f in feedback_data.get("feedback_entries", [])
+            if f.get("run_type") == run_type and f.get("user") != username
+        ]
+
+        if not all_type_feedback:
+            st.info("No feedback from other users for this run type yet.")
+        else:
+            for i, entry in enumerate(reversed(all_type_feedback)):
+                st.markdown(
+                    f"**{entry.get('user', 'Unknown')}** — "
+                    f"{entry.get('timestamp', 'Unknown time')} "
+                    f"({entry.get('num_runs', '?')} runs)"
+                )
+                if entry.get("whats_good"):
+                    st.markdown(f"✅ **Good:** {entry['whats_good']}")
+                if entry.get("whats_bad"):
+                    st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
+                if entry.get("suggested_action"):
+                    st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
+                if i < len(all_type_feedback) - 1:
+                    st.markdown("---")
+
+
+def render_admin_section(username: str):
+    """Render the admin panel with per-user and global statistics."""
     with st.expander("📊 All Collected Feedback (Admin View)"):
         feedback_data, _ = load_feedback_data()
         all_entries = feedback_data.get("feedback_entries", [])
@@ -461,19 +523,198 @@ def main():
         if not all_entries:
             st.info("No feedback collected yet.")
         else:
-            col1, col2 = st.columns(2)
+            # --- Global stats ---
+            st.subheader("Global Statistics")
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Total Entries", len(all_entries))
             with col2:
                 unique_types = len(set(e.get("run_type", "") for e in all_entries))
                 st.metric("Run Types Covered", unique_types)
+            with col3:
+                unique_users = len(set(e.get("user", "Unknown") for e in all_entries))
+                st.metric("Unique Users", unique_users)
 
-            st.download_button(
-                label="📥 Download All Feedback (JSON)",
-                data=json.dumps(feedback_data, indent=2, default=str),
-                file_name="chemist_feedback_export.json",
-                mime="application/json",
+            # --- Per-user breakdown ---
+            st.subheader("Per-User Breakdown")
+            user_counts = {}
+            for entry in all_entries:
+                u = entry.get("user", "Unknown")
+                user_counts[u] = user_counts.get(u, 0) + 1
+
+            user_df = pd.DataFrame(
+                [
+                    {"User": u, "Submissions": c}
+                    for u, c in sorted(user_counts.items(), key=lambda x: -x[1])
+                ]
             )
+            st.dataframe(user_df, use_container_width=True, hide_index=True)
+
+            # --- Per run-type × user matrix ---
+            st.subheader("Coverage Matrix (Run Type × User)")
+            matrix_data = {}
+            for entry in all_entries:
+                rt = entry.get("run_type", "Unknown")
+                u = entry.get("user", "Unknown")
+                if rt not in matrix_data:
+                    matrix_data[rt] = {}
+                matrix_data[rt][u] = matrix_data[rt].get(u, 0) + 1
+
+            all_users_in_data = sorted({e.get("user", "Unknown") for e in all_entries})
+            matrix_rows = []
+            for rt in sorted(matrix_data.keys()):
+                row = {"Run Type": rt}
+                for u in all_users_in_data:
+                    row[u] = matrix_data[rt].get(u, 0)
+                matrix_rows.append(row)
+
+            if matrix_rows:
+                matrix_df = pd.DataFrame(matrix_rows)
+                st.dataframe(matrix_df, use_container_width=True, hide_index=True)
+
+            # --- Filter by user ---
+            st.subheader("Filter by User")
+            all_submitters = get_all_users_who_submitted(feedback_data)
+            filter_user = st.selectbox(
+                "Select a user to view their feedback",
+                options=["All Users"] + all_submitters,
+                key="admin_user_filter",
+            )
+
+            if filter_user == "All Users":
+                filtered = all_entries
+            else:
+                filtered = get_user_feedback_entries(feedback_data, filter_user)
+
+            if filtered:
+                for i, entry in enumerate(reversed(filtered)):
+                    entry_user = entry.get("user", "Unknown")
+                    st.markdown(
+                        f"**{entry_user}** → *{entry.get('run_type', '?')}* — "
+                        f"{entry.get('timestamp', 'Unknown time')} "
+                        f"({entry.get('num_runs', '?')} runs)"
+                    )
+                    if entry.get("whats_good"):
+                        st.markdown(f"✅ **Good:** {entry['whats_good']}")
+                    if entry.get("whats_bad"):
+                        st.markdown(f"❌ **Bad:** {entry['whats_bad']}")
+                    if entry.get("suggested_action"):
+                        st.markdown(f"🔧 **Action:** {entry['suggested_action']}")
+                    if i < len(filtered) - 1:
+                        st.markdown("---")
+            else:
+                st.info("No feedback entries match this filter.")
+
+            # --- Downloads ---
+            st.subheader("Export")
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="📥 Download All Feedback (JSON)",
+                    data=json.dumps(feedback_data, indent=2, default=str),
+                    file_name="chemist_feedback_all.json",
+                    mime="application/json",
+                )
+            with col_dl2:
+                my_data = {
+                    "feedback_entries": get_user_feedback_entries(
+                        feedback_data, username
+                    )
+                }
+                st.download_button(
+                    label=f"📥 Download My Feedback ({username})",
+                    data=json.dumps(my_data, indent=2, default=str),
+                    file_name=f"chemist_feedback_{username}.json",
+                    mime="application/json",
+                )
+
+
+# =============================================================================
+# Main app
+# =============================================================================
+
+
+def main():
+    st.set_page_config(
+        page_title="Kinetic fitting feedback",
+        page_icon="⚗️",
+        layout="wide",
+    )
+
+    st.title("⚗️ Kinetic fitting - chemistry feedback round")
+    st.markdown("---")
+
+    # ----- User login gate -----
+    if "current_user" not in st.session_state:
+        chosen = render_login_screen()
+        if chosen:
+            st.session_state["current_user"] = chosen
+            st.rerun()
+        st.stop()  # Don't render the rest until logged in
+
+    username = st.session_state["current_user"]
+
+    # ----- Sidebar -----
+    with st.sidebar:
+        render_user_badge(username)
+
+        st.header("🔬 Run Type Selection")
+        run_type = st.selectbox(
+            "Select Run Type",
+            options=list(RUN_TEMPLATES.keys()),
+            help=(
+                "Choose the type of kinetic fitting run to review. "
+                "You will see ALL runs of this type and provide one "
+                "overall feedback."
+            ),
+        )
+
+        template = RUN_TEMPLATES[run_type]
+        available_runs = get_available_runs(template)
+
+        if not available_runs:
+            st.warning(f"No runs found for pattern: {template}")
+            st.stop()
+
+        st.markdown("---")
+        st.info(
+            f"📁 Found **{len(available_runs)}** run(s) for this type.\n\n"
+            "Review all runs below, then submit one piece of feedback "
+            "for the entire set."
+        )
+        st.subheader("Included Runs")
+        for run_dir in available_runs:
+            st.caption(f"• `{run_dir.name}`")
+
+    # ----- Main content: display ALL runs for the selected type -----
+    st.header(f"📊 All Runs — {run_type}")
+    st.caption(
+        "Browse through each run's best reaction network below. "
+        "After reviewing, submit your feedback at the bottom."
+    )
+
+    run_results = []
+    for run_dir in available_runs:
+        best_file, best_data = _find_best_phenomenological_result(run_dir)
+        run_results.append(
+            {
+                "dir": run_dir,
+                "label": extract_run_number(run_dir.name),
+                "best_file": best_file,
+                "best_data": best_data,
+            }
+        )
+
+    render_run_results(run_results)
+
+    # ----- Feedback form -----
+    render_feedback_form(username, run_type, template, available_runs, run_results)
+
+    # ----- Previous feedback (mine + others) -----
+    render_previous_feedback(username, run_type)
+
+    # ----- Admin section -----
+    render_admin_section(username)
 
 
 if __name__ == "__main__":
