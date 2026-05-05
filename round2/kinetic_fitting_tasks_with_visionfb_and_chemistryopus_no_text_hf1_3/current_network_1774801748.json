@@ -1,0 +1,113 @@
+{
+  "reactions": [
+    {
+      "equation": "RuII + hv -> RuII_ex",
+      "type": "light",
+      "quantum_yield": [
+        0.8,
+        1
+      ],
+      "description": "Photoexcitation of Ru catalyst (k1)",
+      "fitted_quantum_yield": 0.9890595637650539
+    },
+    {
+      "equation": "RuII_ex -> RuII",
+      "type": "dark",
+      "k_range": [
+        1538461.5384615385,
+        1538461.5384615385
+      ],
+      "description": "Excited state decay (k8= 1/650ns)",
+      "fitted_k": 1538461.5384615385
+    },
+    {
+      "equation": "RuII_ex + S2O8 -> RuIII + SO4",
+      "type": "dark",
+      "k_range": [
+        1.0,
+        60.0
+      ],
+      "description": "Oxidative quenching (k7)",
+      "fitted_k": 41.899378164168944
+    },
+    {
+      "equation": "RuIII + RuIII -> Ru_Dimer",
+      "type": "dark",
+      "k_range": [
+        0.001,
+        0.1
+      ],
+      "description": "Dimer formation (k3)",
+      "fitted_k": 0.01255506365006132
+    },
+    {
+      "equation": "H2O2 -> O2",
+      "type": "dark",
+      "k_range": [
+        0.001,
+        0.5
+      ],
+      "description": "H2O2 decomposition to O2 (k5)",
+      "fitted_k": 0.17024777022013524
+    },
+    {
+      "equation": "Ru_Dimer + RuIII -> Ru_Inactive",
+      "type": "dark",
+      "k_range": [
+        1000.0,
+        1000000.0
+      ],
+      "description": "Further aggregation of dimers with RuIII"
+    },
+    {
+      "equation": "SO4 + RuII -> RuIII + SO4_2",
+      "type": "dark",
+      "k_range": [
+        100000.0,
+        100000000.0
+      ],
+      "description": "Dark oxidation of RuII by SO4 radical"
+    },
+    {
+      "equation": "RuII_ex + RuII -> RuII + RuII",
+      "type": "dark",
+      "k_range": [
+        100000.0,
+        10000000.0
+      ],
+      "description": "Ground-state self-quenching"
+    },
+    {
+      "equation": "RuII_ex + RuIII -> RuII + RuIII",
+      "type": "dark",
+      "k_range": [
+        10000.0,
+        10000000.0
+      ],
+      "description": "Quenching of excited state by RuIII"
+    },
+    {
+      "equation": "RuIII + H2O + hv -> H2O2 + RuII + H+",
+      "type": "light",
+      "quantum_yield": [
+        0.1,
+        1
+      ],
+      "description": "Light-driven water oxidation by RuIII"
+    },
+    {
+      "equation": "RuIII -> Ru_Inactive",
+      "type": "dark",
+      "k_range": [
+        0.0001,
+        0.1
+      ],
+      "description": "Slow decomposition of RuIII"
+    }
+  ],
+  "metadata": {
+    "created_by": "reaction_network_conversion",
+    "description": "Reaction network for Ru-catalyzed photochemical water oxidation with dimer formation",
+    "version": "2.0"
+  }
+}

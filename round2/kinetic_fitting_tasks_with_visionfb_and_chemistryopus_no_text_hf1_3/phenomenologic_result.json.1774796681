@@ -1,0 +1,137 @@
+{
+  "phenomenological_trends": {
+    "ru_score": 0.2544156702798736,
+    "s2o8_score": 0.8298826893832206,
+    "irradiance_score": 0.0759809335761715,
+    "pH_score": 0.5070273425413452,
+    "overall_score": 0.3843444612120969,
+    "global_params": {
+      "k_1": 1538461.5384615385,
+      "qy_0": 0.91863845743002,
+      "k_2": 41182844.289263956,
+      "k_3": 0.012279057473196093,
+      "k_4": 0.027809462567234617,
+      "k_5": 122990.96157110613,
+      "k_6": 4594402.531559303,
+      "k_7": 1759677.3186332195,
+      "k_8": 19904.71987294423,
+      "qy_9": 0.9987488724014044
+    },
+    "components": {
+      "ru_shape": 0.26666666666666666,
+      "ru_mag": 0.954058763549526,
+      "s2o8_shape": 1.0,
+      "s2o8_mag": 0.8298826893832206
+    }
+  },
+  "network": {
+    "reactions": [
+      {
+        "equation": "RuII + hv -> RuII_ex",
+        "type": "light",
+        "quantum_yield": [
+          0.8,
+          1
+        ],
+        "description": "Photoexcitation of Ru catalyst (k1)",
+        "fitted_quantum_yield": 0.91863845743002
+      },
+      {
+        "equation": "RuII_ex -> RuII",
+        "type": "dark",
+        "k_range": [
+          1538461.5384615385,
+          1538461.5384615385
+        ],
+        "description": "Excited state decay (k8= 1/650ns)",
+        "fitted_k": 1538461.5384615385
+      },
+      {
+        "equation": "RuII_ex + S2O8 -> RuIII + SO4",
+        "type": "dark",
+        "k_range": [
+          1000000.0,
+          1000000000.0
+        ],
+        "description": "Oxidative quenching (k7)",
+        "fitted_k": 41182844.289263956
+      },
+      {
+        "equation": "RuIII + RuIII -> Ru_Dimer",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.1
+        ],
+        "description": "Dimer formation (k3)",
+        "fitted_k": 0.012279057473196093
+      },
+      {
+        "equation": "H2O2 -> O2",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.5
+        ],
+        "description": "H2O2 decomposition to O2 (k5)",
+        "fitted_k": 0.027809462567234617
+      },
+      {
+        "equation": "Ru_Dimer + RuIII -> Ru_Inactive",
+        "type": "dark",
+        "k_range": [
+          1000.0,
+          1000000.0
+        ],
+        "description": "Further aggregation of dimers with RuIII",
+        "fitted_k": 122990.96157110613
+      },
+      {
+        "equation": "SO4 + RuII -> RuIII + SO4_2",
+        "type": "dark",
+        "k_range": [
+          100000.0,
+          100000000.0
+        ],
+        "description": "Dark oxidation of RuII by SO4 radical",
+        "fitted_k": 4594402.531559303
+      },
+      {
+        "equation": "RuII_ex + RuII -> RuII + RuII",
+        "type": "dark",
+        "k_range": [
+          100000.0,
+          10000000.0
+        ],
+        "description": "Ground-state self-quenching",
+        "fitted_k": 1759677.3186332195
+      },
+      {
+        "equation": "RuII_ex + RuIII -> RuII + RuIII",
+        "type": "dark",
+        "k_range": [
+          10000.0,
+          10000000.0
+        ],
+        "description": "Quenching of excited state by RuIII",
+        "fitted_k": 19904.71987294423
+      },
+      {
+        "equation": "RuIII + H2O + hv -> H2O2 + RuII + H+",
+        "type": "light",
+        "quantum_yield": [
+          0.1,
+          1.0
+        ],
+        "description": "Light-driven water oxidation by RuIII",
+        "fitted_quantum_yield": 0.9987488724014044
+      }
+    ],
+    "metadata": {
+      "created_by": "reaction_network_conversion",
+      "description": "Reaction network for Ru-catalyzed photochemical water oxidation with dimer formation",
+      "version": "2.0"
+    }
+  },
+  "best_phenomenological_score": 0.7167134923964531
+}

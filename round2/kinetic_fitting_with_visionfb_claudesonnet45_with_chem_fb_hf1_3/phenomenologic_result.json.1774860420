@@ -1,0 +1,148 @@
+{
+  "phenomenological_trends": {
+    "ru_score": 0.6216857914273777,
+    "s2o8_score": 0.587610279324732,
+    "irradiance_score": 0.8210469494376286,
+    "pH_score": 0.40819909521499503,
+    "overall_score": 0.6120455813664222,
+    "global_params": {
+      "k_1": 1538461.5384615385,
+      "qy_0": 0.8435041620859779,
+      "k_2": 7.5602451960298165,
+      "qy_3": 0.8718508749929752,
+      "k_4": 0.011999073639157429,
+      "k_5": 0.4672115025866861,
+      "k_6": 0.0031112346613428143,
+      "k_7": 555016918.7886827,
+      "k_8": 35448.14853910151,
+      "k_9": 0.009691189307193895,
+      "k_10": 295937583.75449264
+    },
+    "components": {
+      "ru_shape": 1.0,
+      "ru_mag": 0.6216857914273777,
+      "s2o8_shape": 1.0,
+      "s2o8_mag": 0.587610279324732
+    }
+  },
+  "network": {
+    "reactions": [
+      {
+        "equation": "RuII + hv -> RuII_ex",
+        "type": "light",
+        "quantum_yield": [
+          0.8,
+          1
+        ],
+        "description": "Photoexcitation of Ru catalyst (k1)",
+        "fitted_quantum_yield": 0.8435041620859779
+      },
+      {
+        "equation": "RuII_ex -> RuII",
+        "type": "dark",
+        "k_range": [
+          1538461.5384615385,
+          1538461.5384615385
+        ],
+        "description": "Excited state decay (k8= 1/650ns)",
+        "fitted_k": 1538461.5384615385
+      },
+      {
+        "equation": "RuII_ex + S2O8 -> RuIII + SO4",
+        "type": "dark",
+        "k_range": [
+          1.0,
+          60.0
+        ],
+        "description": "Oxidative quenching (k7)",
+        "fitted_k": 7.5602451960298165
+      },
+      {
+        "equation": "RuIII + H2O + hv -> H2O2 + RuII + H+",
+        "type": "light",
+        "quantum_yield": [
+          0.1,
+          1.0
+        ],
+        "description": "Light-driven water oxidation (k2)",
+        "fitted_quantum_yield": 0.8718508749929752
+      },
+      {
+        "equation": "RuIII + RuIII -> Ru_Dimer",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.1
+        ],
+        "description": "Dimer formation (k3)",
+        "fitted_k": 0.011999073639157429
+      },
+      {
+        "equation": "H2O2 -> O2",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.5
+        ],
+        "description": "H2O2 decomposition to O2 (k5)",
+        "fitted_k": 0.4672115025866861
+      },
+      {
+        "equation": "Ru_Dimer -> RuIII + RuIII",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.1
+        ],
+        "description": "Dimer dissociation back to active RuIII",
+        "fitted_k": 0.0031112346613428143
+      },
+      {
+        "equation": "SO4 + RuII -> RuIII + SO4_2minus",
+        "type": "dark",
+        "k_range": [
+          1000000.0,
+          1000000000.0
+        ],
+        "description": "SO4 radical oxidizes RuII to RuIII",
+        "fitted_k": 555016918.7886827
+      },
+      {
+        "equation": "RuIII + RuII_ex -> RuII + RuII",
+        "type": "dark",
+        "k_range": [
+          10000.0,
+          10000000.0
+        ],
+        "description": "Self-quenching of excited state by RuIII - causes inhibition at high Ru",
+        "fitted_k": 35448.14853910151
+      },
+      {
+        "equation": "S2O8 + H2O -> HSO4 + HSO4",
+        "type": "dark",
+        "k_range": [
+          0.0001,
+          0.01
+        ],
+        "description": "Slow persulfate hydrolysis",
+        "fitted_k": 0.009691189307193895
+      },
+      {
+        "equation": "SO4 + SO4 -> S2O8",
+        "type": "dark",
+        "k_range": [
+          1000000.0,
+          1000000000.0
+        ],
+        "description": "SO4 radical recombination - reduces efficiency at high persulfate",
+        "fitted_k": 295937583.75449264
+      }
+    ],
+    "metadata": {
+      "created_by": "reaction_network_conversion",
+      "description": "Reaction network for Ru-catalyzed photochemical water oxidation with dimer formation",
+      "version": "2.0"
+    }
+  },
+  "best_phenomenological_score": 0.6187382531198196
+}

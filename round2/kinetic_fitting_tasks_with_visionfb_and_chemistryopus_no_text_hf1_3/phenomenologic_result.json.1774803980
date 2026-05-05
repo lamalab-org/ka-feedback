@@ -1,0 +1,148 @@
+{
+  "phenomenological_trends": {
+    "ru_score": 0.7613947260366604,
+    "s2o8_score": 0.6421008531252487,
+    "irradiance_score": 0.9647568212808848,
+    "pH_score": 0.4633380157537427,
+    "overall_score": 0.7185970284466394,
+    "global_params": {
+      "k_1": 1538461.5384615385,
+      "qy_0": 0.9488811721489712,
+      "k_2": 40.09378594882707,
+      "k_3": 0.00472812863072366,
+      "k_4": 0.2272445031156877,
+      "k_5": 122981.66801180616,
+      "k_6": 7436669.273808367,
+      "k_7": 2570823.7075497443,
+      "k_8": 870535.0555042878,
+      "qy_9": 0.4318347314600116,
+      "k_10": 0.00013315360458860637
+    },
+    "components": {
+      "ru_shape": 1.0,
+      "ru_mag": 0.7613947260366604,
+      "s2o8_shape": 1.0,
+      "s2o8_mag": 0.6421008531252487
+    }
+  },
+  "network": {
+    "reactions": [
+      {
+        "equation": "RuII + hv -> RuII_ex",
+        "type": "light",
+        "quantum_yield": [
+          0.8,
+          1
+        ],
+        "description": "Photoexcitation of Ru catalyst (k1)",
+        "fitted_quantum_yield": 0.9488811721489712
+      },
+      {
+        "equation": "RuII_ex -> RuII",
+        "type": "dark",
+        "k_range": [
+          1538461.5384615385,
+          1538461.5384615385
+        ],
+        "description": "Excited state decay (k8= 1/650ns)",
+        "fitted_k": 1538461.5384615385
+      },
+      {
+        "equation": "RuII_ex + S2O8 -> RuIII + SO4",
+        "type": "dark",
+        "k_range": [
+          1.0,
+          60.0
+        ],
+        "description": "Oxidative quenching (k7)",
+        "fitted_k": 40.09378594882707
+      },
+      {
+        "equation": "RuIII + RuIII -> Ru_Dimer",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.1
+        ],
+        "description": "Dimer formation (k3)",
+        "fitted_k": 0.00472812863072366
+      },
+      {
+        "equation": "H2O2 -> O2",
+        "type": "dark",
+        "k_range": [
+          0.001,
+          0.5
+        ],
+        "description": "H2O2 decomposition to O2 (k5)",
+        "fitted_k": 0.2272445031156877
+      },
+      {
+        "equation": "Ru_Dimer + RuIII -> Ru_Inactive",
+        "type": "dark",
+        "k_range": [
+          1000.0,
+          1000000.0
+        ],
+        "description": "Further aggregation of dimers with RuIII",
+        "fitted_k": 122981.66801180616
+      },
+      {
+        "equation": "SO4 + RuII -> RuIII + SO4_2",
+        "type": "dark",
+        "k_range": [
+          100000.0,
+          100000000.0
+        ],
+        "description": "Dark oxidation of RuII by SO4 radical",
+        "fitted_k": 7436669.273808367
+      },
+      {
+        "equation": "RuII_ex + RuII -> RuII + RuII",
+        "type": "dark",
+        "k_range": [
+          100000.0,
+          10000000.0
+        ],
+        "description": "Ground-state self-quenching",
+        "fitted_k": 2570823.7075497443
+      },
+      {
+        "equation": "RuII_ex + RuIII -> RuII + RuIII",
+        "type": "dark",
+        "k_range": [
+          10000.0,
+          10000000.0
+        ],
+        "description": "Quenching of excited state by RuIII",
+        "fitted_k": 870535.0555042878
+      },
+      {
+        "equation": "RuIII + H2O + hv -> H2O2 + RuII + H+",
+        "type": "light",
+        "quantum_yield": [
+          0.1,
+          1
+        ],
+        "description": "Light-driven water oxidation by RuIII",
+        "fitted_quantum_yield": 0.4318347314600116
+      },
+      {
+        "equation": "RuIII -> Ru_Inactive",
+        "type": "dark",
+        "k_range": [
+          0.0001,
+          0.1
+        ],
+        "description": "Slow decomposition of RuIII",
+        "fitted_k": 0.00013315360458860637
+      }
+    ],
+    "metadata": {
+      "created_by": "reaction_network_conversion",
+      "description": "Reaction network for Ru-catalyzed photochemical water oxidation with dimer formation",
+      "version": "2.0"
+    }
+  },
+  "best_phenomenological_score": 0.7185970284466394
+}
