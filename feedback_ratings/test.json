@@ -6,5 +6,13 @@
     "true_type": "Text+Chemistry Feedback every round (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_hf1_3",
     "timestamp": "2026-05-08T07:41:08.164563"
+  },
+  "Candidate 12": {
+    "score": 4,
+    "comments": "",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "No Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_no_fb_claudesonnet45_3",
+    "timestamp": "2026-05-08T07:41:42.084025"
   }
 }
