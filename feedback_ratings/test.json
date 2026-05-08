@@ -38,5 +38,13 @@
     "true_type": "No Feedback (GPT-4o)",
     "true_path": "round1/kinetic_fitting_no_fb_gpt4o_feedback_4",
     "timestamp": "2026-05-08T11:29:08.796546"
+  },
+  "Candidate 4": {
+    "score": 5,
+    "comments": "",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "Text+Chemistry Feedback every round (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_3",
+    "timestamp": "2026-05-08T11:29:39.392918"
   }
 }
