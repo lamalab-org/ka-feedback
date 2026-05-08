@@ -22,5 +22,13 @@
     "true_type": "Text+Vision Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_with_visionfb_claudesonnet45_hf1_5",
     "timestamp": "2026-05-08T07:52:07.062742"
+  },
+  "Candidate 1": {
+    "score": 8,
+    "comments": "",
+    "true_round": "Round 2 (After FB)",
+    "true_type": "Text+Vision+Chemistry Feedback (Claude Sonnet 4.5)",
+    "true_path": "round2/kinetic_fitting_with_visionfb_claudesonnet45_with_chem_fb_hf1_3",
+    "timestamp": "2026-05-08T11:29:03.281350"
   }
 }
