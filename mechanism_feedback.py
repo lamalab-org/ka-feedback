@@ -6,6 +6,7 @@ Features:
 2. Deterministic shuffling per user to prevent bias without losing position on refresh.
 3. Completely hidden metadata/directory names to avoid info leaks.
 4. Aggregated Admin View for Round 1 vs Round 2 head-to-head comparison.
+5. Includes both Concentration and Rate fitting plots.
 """
 
 import streamlit as st
@@ -121,7 +122,7 @@ def get_shuffled_runs(username: str) -> List[dict]:
     return runs
 
 # =============================================================================
-# GitHub Storage (Adapted for JSON Dicts)
+# GitHub Storage
 # =============================================================================
 
 def _github_headers() -> dict:
@@ -177,7 +178,7 @@ def save_user_ratings(username: str, data: dict, sha: Optional[str]) -> bool:
     return _save_json_to_github(path, data, sha)
 
 # =============================================================================
-# Math / ODE / Data (Identical caching as previous)
+# Math / ODE / Data
 # =============================================================================
 
 @dataclass
@@ -288,16 +289,50 @@ def simulate_species_evolution_cached(
 
     return y_solution.tolist(), species_list, species_idx, time_points.tolist()
 
-def create_synthetic_experiment_data() -> dict:
-    time = np.linspace(0, 600, 100)
-    oxygen = np.maximum(50 * (1 - np.exp(-time / 100)) + np.random.normal(0, 1, len(time)), 0)
-    return {"time": time.tolist(), "oxygen": oxygen.tolist(), "metadata": {"c_Ru": 50.0, "c_S2O8": 6000.0, "irradiance": 1000.0, "pH": 7.0}}
-
 def create_synthetic_dataset() -> Dict[str, dict]:
-    return {"Synthetic_1": create_synthetic_experiment_data()} # Minimal mock
+    """Create a synthetic dataset with multiple experiments for rate plot visualization."""
+    dataset = {}
+    
+    # Vary Ru concentration
+    for c_ru in[5, 10, 20, 50, 100]:
+        name = f"exp_Ru_{c_ru}"
+        time = np.linspace(0, 600, 100)
+        scale = c_ru / 50.0
+        oxygen = 50 * scale * (1 - np.exp(-time / (100 / scale))) + np.random.normal(0, 0.5, len(time))
+        oxygen = np.maximum(oxygen, 0)
+        dataset[name] = {
+            "time": time.tolist(), "oxygen": oxygen.tolist(),
+            "metadata": {"c_Ru": float(c_ru), "c_S2O8": 6000.0, "irradiance": 1000.0, "pH": 7.0, "photon_flux": None}
+        }
+    
+    # Vary S2O8 concentration
+    for c_s2o8 in[1000, 3000, 6000, 10000]:
+        name = f"exp_S2O8_{c_s2o8}"
+        time = np.linspace(0, 600, 100)
+        scale = c_s2o8 / 6000.0
+        oxygen = 50 * (1 - np.exp(-time / 100)) * min(scale, 1.5) + np.random.normal(0, 0.5, len(time))
+        oxygen = np.maximum(oxygen, 0)
+        dataset[name] = {
+            "time": time.tolist(), "oxygen": oxygen.tolist(),
+            "metadata": {"c_Ru": 50.0, "c_S2O8": float(c_s2o8), "irradiance": 1000.0, "pH": 7.0, "photon_flux": None}
+        }
+    
+    # Vary irradiance
+    for irr in[500, 1000, 1500, 2000, 3000]:
+        name = f"exp_irr_{irr}"
+        time = np.linspace(0, 600, 100)
+        scale = irr / 1000.0
+        oxygen = 50 * (1 - np.exp(-time / (100 / scale))) + np.random.normal(0, 0.5, len(time))
+        oxygen = np.maximum(oxygen, 0)
+        dataset[name] = {
+            "time": time.tolist(), "oxygen": oxygen.tolist(),
+            "metadata": {"c_Ru": 50.0, "c_S2O8": 6000.0, "irradiance": float(irr), "pH": 7.0, "photon_flux": None}
+        }
+    
+    return dataset
 
 # =============================================================================
-# Plotting Functions (Copied identically)
+# Plotting Functions
 # =============================================================================
 
 def create_interactive_concentration_plot(network, params, exp_data, exp_name="Rep Exp"):
@@ -325,6 +360,68 @@ def create_interactive_concentration_plot(network, params, exp_data, exp_name="R
         if sp in s_idx: fig.add_trace(go.Scatter(x=t_sim, y=y_sol[:, s_idx[sp]], mode="lines", name=f"[{sp}]", line=dict(color=SPECIES_COLORS.get(sp, "#666")), legend="legend2"), row=1, col=2)
 
     fig.update_layout(title=dict(text=f"Species Evolution: {exp_name}", font=dict(size=14)), height=450, template="plotly_white", margin=dict(l=50, r=20, t=50, b=50))
+    return fig
+
+def create_interactive_rate_plots_optimized(network: dict, params: dict, all_exp_data: Dict[str, dict], selected_curves: Optional[Dict[str, List[str]]] = None) -> go.Figure:
+    groups = {"c_Ru": {}, "c_S2O8": {}, "irradiance": {}}
+
+    for exp_name, exp_data in all_exp_data.items():
+        meta = exp_data["metadata"]
+        groups["c_Ru"].setdefault(meta.get("c_Ru", 0), []).append((exp_name, exp_data))
+        groups["c_S2O8"].setdefault(meta.get("c_S2O8", 0),[]).append((exp_name, exp_data))
+        groups["irradiance"].setdefault(meta.get("irradiance", 1000),[]).append((exp_name, exp_data))
+
+    fig = make_subplots(rows=2, cols=2, subplot_titles=("A: [Ru(bpy)₃]Cl₂ Variation", "B: Na₂S₂O₈ Variation", "C: Irradiance Variation", ""), horizontal_spacing=0.10, vertical_spacing=0.12)
+    panel_configs =[("c_Ru", "µM", (1, 1), "legend1"), ("c_S2O8", "µM", (1, 2), "legend2"), ("irradiance", "Wm⁻²", (2, 1), "legend3")]
+
+    ScatterClass = go.Scattergl if USE_WEBGL else go.Scatter
+    network_json, params_json = json.dumps(network, default=str), json.dumps(params, default=str)
+
+    for param_key, unit, (row, col), legend_name in panel_configs:
+        param_groups = groups[param_key]
+        if not param_groups: continue
+
+        sorted_values = sorted(param_groups.keys())
+        n_colors = max(len(sorted_values), 2)
+        colors = [PARAM_COLORS[int(i * (len(PARAM_COLORS) - 1) / (n_colors - 1))] for i in range(n_colors)]
+
+        for i, param_val in enumerate(sorted_values):
+            exp_list = param_groups[param_val]
+            color = colors[i]
+            label = f"{param_val:.0f} {unit}"
+
+            visible = True
+            if selected_curves and param_key in selected_curves:
+                visible = label in selected_curves[param_key]
+
+            all_time_exp, all_rate_exp, all_time_model, all_rate_model = [], [], [],[]
+
+            for exp_name, exp_data in exp_list:
+                time_exp, oxygen_exp = np.array(exp_data["time"]), np.array(exp_data["oxygen"])
+                time_ds, oxygen_ds = downsample_data(time_exp, oxygen_exp, max_points=50)
+                rate_exp = np.gradient(oxygen_ds, time_ds)
+                
+                all_time_exp.extend(time_ds.tolist() + [None])
+                all_rate_exp.extend(rate_exp.tolist() + [None])
+
+                y_sol, s_list, s_idx, t_sim = simulate_species_evolution_cached(
+                    network_json, params_json, json.dumps(exp_data["metadata"], default=str),
+                    float(time_exp.min()), float(time_exp.max()), n_points=50
+                )
+                
+                y_sol, t_sim = np.array(y_sol), np.array(t_sim)
+                o2_pred = y_sol[:, s_idx["O2"]] if "O2" in s_idx else np.zeros_like(t_sim)
+                rate_pred = np.gradient(o2_pred, t_sim)
+                
+                all_time_model.extend(t_sim.tolist() + [None])
+                all_rate_model.extend(rate_pred.tolist() + [None])
+
+            fig.add_trace(ScatterClass(x=all_time_exp, y=all_rate_exp, mode="markers", name=f"{label}", marker=dict(color=color, size=4, opacity=0.6), legendgroup=f"{param_key}_{param_val}", showlegend=True, visible=visible, legend=legend_name), row=row, col=col)
+            fig.add_trace(go.Scatter(x=all_time_model, y=all_rate_model, mode="lines", name=f"{label} (fit)", line=dict(color=color, width=2), legendgroup=f"{param_key}_{param_val}", showlegend=False, visible=visible, connectgaps=False, legend=legend_name), row=row, col=col)
+
+    for r, c in[(1, 1), (1, 2), (2, 1)]: fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5, row=r, col=c)
+
+    fig.update_layout(height=700, template="plotly_white", margin=dict(l=70, r=30, t=60, b=60))
     return fig
 
 # =============================================================================
@@ -375,6 +472,36 @@ def render_login_screen():
             st.error("Please enter your name.")
     return None
 
+def render_curve_selector(all_exp_data: Dict[str, dict], run_id: str) -> Dict[str, List[str]]:
+    st.markdown("##### 🎛️ Curve Selection")
+    groups = {"c_Ru": set(), "c_S2O8": set(), "irradiance": set()}
+
+    for exp_data in all_exp_data.values():
+        meta = exp_data["metadata"]
+        groups["c_Ru"].add(f"{meta.get('c_Ru', 0):.0f} µM")
+        groups["c_S2O8"].add(f"{meta.get('c_S2O8', 0):.0f} µM")
+        groups["irradiance"].add(f"{meta.get('irradiance', 1000):.0f} Wm⁻²")
+
+    selected = {}
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.caption("**[Ru(bpy)₃]Cl₂**")
+        ru_options = sorted(groups["c_Ru"], key=lambda x: float(x.split()[0]))
+        selected["c_Ru"] = st.multiselect("Ru", options=ru_options, default=ru_options, label_visibility="collapsed", key=f"ru_{run_id}")
+
+    with col2:
+        st.caption("**Na₂S₂O₈**")
+        s2o8_options = sorted(groups["c_S2O8"], key=lambda x: float(x.split()[0]))
+        selected["c_S2O8"] = st.multiselect("S2O8", options=s2o8_options, default=s2o8_options, label_visibility="collapsed", key=f"s2o8_{run_id}")
+
+    with col3:
+        st.caption("**Irradiance**")
+        irr_options = sorted(groups["irradiance"], key=lambda x: float(x.split()[0]))
+        selected["irradiance"] = st.multiselect("Irr", options=irr_options, default=irr_options, label_visibility="collapsed", key=f"irr_{run_id}")
+
+    return selected
+
 def render_candidate_view(run_info: dict, rating_data: dict, all_exp_data: dict, username: str, sha: Optional[str]):
     candidate_id = run_info["candidate_id"]
     st.header(f"🔍 Inspecting: {candidate_id}")
@@ -384,7 +511,6 @@ def render_candidate_view(run_info: dict, rating_data: dict, all_exp_data: dict,
 
     if not best_data:
         st.warning(f"⚠️ Simulation data missing for {candidate_id}. It might not have converged.")
-        # Provide fallback rating mechanism
     else:
         # 1. Reactions Table
         reactions = best_data.get("network", {}).get("reactions",[])
@@ -402,17 +528,30 @@ def render_candidate_view(run_info: dict, rating_data: dict, all_exp_data: dict,
                 st.info("No phenomenological trend image available.")
 
         with col_plot:
-            rep_exp_data = list(all_exp_data.values())[0] if all_exp_data else create_synthetic_experiment_data()
             params = best_data.get("phenomenological_trends", {}).get("global_params", {})
             for i, rxn in enumerate(reactions):
                 if rxn.get("type") == "light" and "fitted_quantum_yield" in rxn: params[f"qy_{i}"] = rxn["fitted_quantum_yield"]
                 elif "fitted_k" in rxn: params[f"k_{i}"] = rxn["fitted_k"]
             
-            try:
-                fig = create_interactive_concentration_plot(best_data["network"], params, rep_exp_data, "Sample Data")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Plot error: {e}")
+            # Curve selector for rate plots
+            selected_curves = render_curve_selector(all_exp_data, candidate_id)
+            
+            plot_tabs = st.tabs(["📈 Concentration vs Time", "⚡ Rate vs Time"])
+            
+            with plot_tabs[0]:
+                rep_exp_data = list(all_exp_data.values())[0] if all_exp_data else create_synthetic_dataset()["exp_Ru_50"]
+                try:
+                    fig_conc = create_interactive_concentration_plot(best_data["network"], params, rep_exp_data, "Representative Data")
+                    st.plotly_chart(fig_conc, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Concentration plot error: {e}")
+                    
+            with plot_tabs[1]:
+                try:
+                    fig_rate = create_interactive_rate_plots_optimized(best_data["network"], params, all_exp_data, selected_curves)
+                    st.plotly_chart(fig_rate, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Rate plot error: {e}")
 
     # Rating Widget
     st.markdown("---")
@@ -440,7 +579,6 @@ def render_candidate_view(run_info: dict, rating_data: dict, all_exp_data: dict,
 def render_admin_view():
     st.title("📊 Admin Panel: Round 1 vs Round 2 Comparison")
     
-    # Load all user JSON files
     url = f"{GITHUB_API}/repos/{_github_repo()}/contents/{RATINGS_ROOT}"
     resp = requests.get(url, headers=_github_headers(), params={"ref": _github_branch()})
     
@@ -462,7 +600,6 @@ def render_admin_view():
 
     df = pd.DataFrame(all_ratings)
     
-    # Pivot to compare Round 1 and Round 2
     st.subheader("Aggregate Scores Head-to-Head")
     try:
         pivot_df = df.pivot_table(
@@ -472,10 +609,8 @@ def render_admin_view():
             aggfunc=["mean", "count"]
         )
         
-        # Flatten MultiIndex
         pivot_df.columns = [f"{col[1]} ({col[0]})" for col in pivot_df.columns]
         
-        # Calculate Delta
         r1_col = "Round 1 (Before FB) (mean)"
         r2_col = "Round 2 (After FB) (mean)"
         
@@ -486,14 +621,9 @@ def render_admin_view():
     except Exception as e:
         st.warning(f"Not enough data to construct comparison table: {e}")
 
-    # Raw Data Export
     st.subheader("Raw Data")
     st.dataframe(df, use_container_width=True)
-    st.download_button(
-        "📥 Download CSV", 
-        df.to_csv(index=False).encode('utf-8'), 
-        "blind_ratings_export.csv"
-    )
+    st.download_button("📥 Download CSV", df.to_csv(index=False).encode('utf-8'), "blind_ratings_export.csv")
 
 # =============================================================================
 # Main Layout
@@ -502,7 +632,6 @@ def render_admin_view():
 def main():
     st.set_page_config(page_title="Blind Kinetic Rating", page_icon="⚖️", layout="wide")
 
-    # Routing
     query_params = st.query_params
     if "admin" in query_params:
         render_admin_view()
@@ -519,7 +648,6 @@ def main():
     shuffled_runs = get_shuffled_runs(username)
     rating_data, sha = load_user_ratings(username)
 
-    # Sidebar Navigation
     st.sidebar.markdown(f"### 👤 {username}")
     if st.sidebar.button("🔄 Switch User"):
         del st.session_state["current_user"]
@@ -528,11 +656,9 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.subheader("Candidates")
     
-    # Progress check
     completed = len(rating_data.keys())
     st.sidebar.progress(completed / 12.0, text=f"{completed}/12 Evaluated")
 
-    # Selection Menu
     options =[]
     for run in shuffled_runs:
         cid = run["candidate_id"]
@@ -543,9 +669,7 @@ def main():
     selected_idx = options.index(selected_option)
     selected_run = shuffled_runs[selected_idx]
 
-    # Main view
-    # Load basic mock data since loading full HDF5 over and over is heavy
-    # (If you want real data, point create_synthetic_dataset() -> load_experimental_data_cached(DATA_PATH))
+    # Load full synthetic dataset for rate plots
     all_exp_data = create_synthetic_dataset() 
 
     render_candidate_view(selected_run, rating_data, all_exp_data, username, sha)
