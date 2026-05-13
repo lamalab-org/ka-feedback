@@ -6,5 +6,13 @@
     "true_type": "Text Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_with_fb_claudesonnet45_hf1_3",
     "timestamp": "2026-05-13T13:38:01.981348"
+  },
+  "Candidate 2": {
+    "score": 5,
+    "comments": "Trends captured quite well, but shape of rate vs. time curves do not fit to experimental data",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "Text Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_with_fb_claudesonnet45_3",
+    "timestamp": "2026-05-13T13:38:51.041962"
   }
 }
