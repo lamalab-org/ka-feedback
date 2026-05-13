@@ -62,5 +62,13 @@
     "true_type": "No Feedback (GPT-4o)",
     "true_path": "round1/kinetic_fitting_no_fb_gpt4o_feedback_4",
     "timestamp": "2026-05-13T13:46:45.716143"
+  },
+  "Candidate 10": {
+    "score": 5,
+    "comments": "",
+    "true_round": "Round 2 (After FB)",
+    "true_type": "No Feedback (Claude Sonnet 4.5)",
+    "true_path": "round2/kinetic_fitting_no_fb_claudesonnet45_hf1_3",
+    "timestamp": "2026-05-13T13:47:31.951094"
   }
 }
