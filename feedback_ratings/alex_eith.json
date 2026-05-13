@@ -30,5 +30,13 @@
     "true_type": "No Feedback (Claude Sonnet 4.5)",
     "true_path": "round1/kinetic_fitting_no_fb_claudesonnet45_3",
     "timestamp": "2026-05-13T13:41:23.886629"
+  },
+  "Candidate 5": {
+    "score": 5,
+    "comments": "Dimer formation from RuII is unrealistic",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "Text+Vision Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_with_visionfb_claudesonnet45_5",
+    "timestamp": "2026-05-13T13:42:19.764978"
   }
 }
