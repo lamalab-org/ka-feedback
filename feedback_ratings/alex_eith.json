@@ -22,5 +22,13 @@
     "true_type": "Text+Vision+Chemistry Feedback (Claude Sonnet 4.5)",
     "true_path": "round1/kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_3",
     "timestamp": "2026-05-13T13:40:26.760042"
+  },
+  "Candidate 4": {
+    "score": 6,
+    "comments": "Decend model, but decrease in observed rates for high Ru concentrations not captured",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "No Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_no_fb_claudesonnet45_3",
+    "timestamp": "2026-05-13T13:41:23.886629"
   }
 }
