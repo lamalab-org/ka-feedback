@@ -1,0 +1,10 @@
+{
+  "Candidate 1": {
+    "score": 7,
+    "comments": "",
+    "true_round": "Round 2 (After FB)",
+    "true_type": "Text Feedback (Claude Sonnet 4.5)",
+    "true_path": "round2/kinetic_fitting_with_fb_claudesonnet45_hf1_3",
+    "timestamp": "2026-05-13T13:38:01.981348"
+  }
+}
