@@ -78,5 +78,13 @@
     "true_type": "Text+Vision+Chemistry Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_with_visionfb_claudesonnet45_with_chem_fb_hf1_3",
     "timestamp": "2026-05-13T13:49:44.084868"
+  },
+  "Candidate 12": {
+    "score": 7,
+    "comments": "General good model, but shape of the rate vs. time curves does not really fit to experimental data",
+    "true_round": "Round 2 (After FB)",
+    "true_type": "Text+Chemistry Feedback every round (Claude Sonnet 4.5)",
+    "true_path": "round2/kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_hf1_3",
+    "timestamp": "2026-05-13T13:50:30.761967"
   }
 }
