@@ -54,5 +54,13 @@
     "true_type": "Text Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_with_fb_claudesonnet45_hf1_3",
     "timestamp": "2026-05-14T11:52:12.953649"
+  },
+  "Candidate 9": {
+    "score": 1,
+    "comments": "Unphysical time-rate curves, unphysical reaction (RuII_ex + RuIII -> RuII + RuII), but good fit to [Ru] concentration trend (but this seems to be a case of right answer for the wrong reason)",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "Text+Chemistry Feedback every round (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_3",
+    "timestamp": "2026-05-14T11:53:56.178350"
   }
 }
