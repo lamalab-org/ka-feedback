@@ -70,5 +70,13 @@
     "true_type": "Text+Vision Feedback (Claude Sonnet 4.5)",
     "true_path": "round1/kinetic_fitting_with_visionfb_claudesonnet45_5",
     "timestamp": "2026-05-14T11:55:17.458917"
+  },
+  "Candidate 11": {
+    "score": 5,
+    "comments": "Good fit to [Ru] concentration trend, but poor fit to persulfate concentration trend. Decent fits for time-concentration and time-rate profiles. However,  Includes unphysical reaction steps  (RuIII + RuII_ex -> RuII + RuII and S2O8 + H2O -> HSO4 + HSO4, both do not keep electron balance)",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "Text+Vision+Chemistry Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_with_visionfb_claudesonnet45_with_opus_fb_3",
+    "timestamp": "2026-05-14T11:58:10.386916"
   }
 }
