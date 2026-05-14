@@ -46,5 +46,13 @@
     "true_type": "No Feedback (GPT-4o)",
     "true_path": "round1/kinetic_fitting_no_fb_gpt4o_feedback_4",
     "timestamp": "2026-05-14T11:51:26.949547"
+  },
+  "Candidate 8": {
+    "score": 1,
+    "comments": "Unphysical time-rate profiles and [Ru] concentration trend is not captured correctly",
+    "true_round": "Round 2 (After FB)",
+    "true_type": "Text Feedback (Claude Sonnet 4.5)",
+    "true_path": "round2/kinetic_fitting_with_fb_claudesonnet45_hf1_3",
+    "timestamp": "2026-05-14T11:52:12.953649"
   }
 }
