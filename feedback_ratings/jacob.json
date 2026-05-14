@@ -17,10 +17,10 @@
   },
   "Candidate 3": {
     "score": 1,
-    "comments": "Concentration-rate curve shapes are unphysical",
+    "comments": "time-rate curve shapes are unphysical",
     "true_round": "Round 2 (After FB)",
     "true_type": "Text+Chemistry Feedback every round (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_tasks_with_visionfb_and_chemistryopus_no_text_hf1_3",
-    "timestamp": "2026-05-14T11:46:22.294206"
+    "timestamp": "2026-05-14T11:47:10.524638"
   }
 }
