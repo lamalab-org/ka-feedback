@@ -9,11 +9,11 @@
   },
   "Candidate 2": {
     "score": 2,
-    "comments": "Model does not capture [Ru] concentration rate correctly, concentration-time and concentration-rate fits are poor",
+    "comments": "Model does not capture [Ru] concentration rate correctly, concentration-time and rate-time fits are poor",
     "true_round": "Round 2 (After FB)",
     "true_type": "No Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_no_fb_claudesonnet45_hf1_3",
-    "timestamp": "2026-05-14T11:45:19.415619"
+    "timestamp": "2026-05-14T11:47:24.466525"
   },
   "Candidate 3": {
     "score": 1,
