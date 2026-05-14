@@ -30,5 +30,13 @@
     "true_type": "Text+Vision Feedback (Claude Sonnet 4.5)",
     "true_path": "round2/kinetic_fitting_with_visionfb_claudesonnet45_hf1_5",
     "timestamp": "2026-05-14T11:49:30.757582"
+  },
+  "Candidate 5": {
+    "score": 1,
+    "comments": "[Ru] concentration trend is not captured correctly",
+    "true_round": "Round 1 (Before FB)",
+    "true_type": "No Feedback (Claude Sonnet 4.5)",
+    "true_path": "round1/kinetic_fitting_no_fb_claudesonnet45_3",
+    "timestamp": "2026-05-14T11:50:05.233489"
   }
 }
